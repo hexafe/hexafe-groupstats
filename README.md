@@ -41,28 +41,79 @@ pip install -e .[pandas]
 ## Example: `analyze_metric` with dict groups
 
 ```python
+from pprint import pprint
+
 from hexafe_groupstats import analyze_metric, SpecLimits
 
 result = analyze_metric(
     "diameter",
     {
-        "Line A": [10.1, 10.3, 10.2, 10.4],
-        "Line B": [10.0, 10.1, 10.1, 10.2],
+        "Line A": [10.02, 10.04, 10.01, 10.03, 10.05, 10.02],
+        "Line B": [10.18, 10.21, 10.17, 10.19, 10.20, 10.22],
+        "Line C": [9.91, 9.93, 9.95, 9.92, 9.94, 9.90],
     },
-    spec_limits=SpecLimits(lsl=9.8, nominal=10.2, usl=10.6),
+    spec_limits=SpecLimits(lsl=9.7, nominal=10.0, usl=10.3),
 )
 
-print(result.metric)
-print(result.omnibus.test_name)
-print(result.analysis_policy.analysis_restriction_label)
-print(result.pairwise_results[0].test_name)
+def fmt_p(value):
+    return None if value is None else f"{value:.3g}"
+
+summary = {
+    "metric": result.metric,
+    "groups": result.group_order,
+    "omnibus": {
+        "test": result.omnibus.test_name,
+        "p_value": fmt_p(result.omnibus.p_value),
+        "effect_size": round(result.omnibus.effect_size, 3),
+    },
+    "posthoc": [
+        {
+            "pair": f"{row.group_a} vs {row.group_b}",
+            "p_adj": fmt_p(row.adjusted_p_value),
+            "significant": row.significant,
+            "effect": round(row.effect_size, 3),
+        }
+        for row in result.posthoc_results
+    ],
+    "descriptive": [
+        {"group": row.group, "mean": round(row.mean, 3), "std": round(row.std, 3)}
+        for row in result.descriptive_stats
+    ],
+    "capability": [
+        {"group": row.group, "cpk": round(row.cpk, 3)}
+        for row in result.capability_results
+    ],
+    "insights": list(result.insights[:2]),
+}
+
+pprint(summary, sort_dicts=False)
 ```
 
 ```text
-diameter
-Student t-test
-Full analysis
-Student t-test
+{'metric': 'diameter',
+ 'groups': ('Line A', 'Line B', 'Line C'),
+ 'omnibus': {'test': 'ANOVA', 'p_value': '1.93e-13', 'effect_size': 0.98},
+ 'posthoc': [{'pair': 'Line A vs Line B',
+              'p_adj': '1.43e-10',
+              'significant': True,
+              'effect': -9.901},
+             {'pair': 'Line A vs Line C',
+              'p_adj': '1.05e-07',
+              'significant': True,
+              'effect': 6.139},
+             {'pair': 'Line B vs Line C',
+              'p_adj': '1.28e-13',
+              'significant': True,
+              'effect': 14.432}],
+ 'descriptive': [{'group': 'Line A', 'mean': 10.028, 'std': 0.015},
+                 {'group': 'Line B', 'mean': 10.195, 'std': 0.019},
+                 {'group': 'Line C', 'mean': 9.925, 'std': 0.019}],
+ 'capability': [{'group': 'Line A', 'cpk': 6.152},
+                {'group': 'Line B', 'cpk': 1.871},
+                {'group': 'Line C', 'cpk': 4.009}],
+ 'insights': ['Status: EXACT_MATCH; mode=Full analysis.',
+              'Primary signal: Line B vs Line C via Tukey HSD (adj p=0.0000, '
+              'effect=14.432).']}
 ```
 
 ## Example: `analyze_dataframe` with pandas
@@ -73,22 +124,45 @@ from hexafe_groupstats import analyze_dataframe
 
 df = pd.DataFrame(
     {
-        "metric": ["diameter", "diameter", "diameter", "diameter"],
-        "group": ["Line A", "Line A", "Line B", "Line B"],
-        "value": [10.1, 10.3, 10.0, 10.2],
-        "LSL": [9.8, 9.8, 9.8, 9.8],
-        "NOMINAL": [10.2, 10.2, 10.2, 10.2],
-        "USL": [10.6, 10.6, 10.6, 10.6],
+        "metric": ["diameter"] * 9 + ["roughness"] * 9,
+        "group": ["Line A"] * 3 + ["Line B"] * 3 + ["Line C"] * 3 + ["Line A"] * 3 + ["Line B"] * 3 + ["Line C"] * 3,
+        "value": [
+            10.01, 10.03, 10.02,
+            10.18, 10.19, 10.21,
+            9.92, 9.94, 9.93,
+            1.20, 1.30, 1.25,
+            1.55, 1.60, 1.58,
+            1.10, 1.08, 1.12,
+        ],
+        "LSL": [9.7] * 9 + [0.8] * 9,
+        "NOMINAL": [10.0] * 9 + [1.2] * 9,
+        "USL": [10.3] * 9 + [1.8] * 9,
     }
 )
 
 results = analyze_dataframe(df)
-for result in results:
-    print(result.metric, result.group_order, result.spec_status.value)
+summary = [
+    {
+        "metric": result.metric,
+        "omnibus": result.omnibus.test_name,
+        "p_value": f"{result.omnibus.p_value:.3g}",
+        "spec_status": result.spec_status.value,
+    }
+    for result in results
+]
+
+print(summary)
 ```
 
 ```text
-diameter ('Line A', 'Line B') EXACT_MATCH
+[{'metric': 'diameter',
+  'omnibus': 'ANOVA',
+  'p_value': '5.12e-07',
+  'spec_status': 'EXACT_MATCH'},
+ {'metric': 'roughness',
+  'omnibus': 'ANOVA',
+  'p_value': '7.35e-06',
+  'spec_status': 'EXACT_MATCH'}]
 ```
 
 For CSV files from multiple sensors, the recommended shape is a tidy table:
@@ -130,19 +204,44 @@ distribution_df = results_to_distribution_dataframe(results)
 pairwise_df = results_to_pairwise_dataframe(results)
 posthoc_df = results_to_posthoc_dataframe(results)
 
-print(capability_df.columns.tolist())
-print(descriptive_df.columns.tolist())
-print(distribution_df.columns.tolist())
-print(pairwise_df.columns.tolist())
-print(posthoc_df.columns.tolist())
+print(descriptive_df[["metric", "group", "n", "mean", "std", "cpk"]].round(3).head(6).to_dict(orient="records"))
+print(pairwise_df[["metric", "group_a", "group_b", "adjusted_p_value", "effect_size", "method_family"]].round(6).head(6).to_dict(orient="records"))
+print(capability_df[["metric", "group", "cp", "cpk", "warnings"]].round(3).head(6).to_dict(orient="records"))
+print(distribution_df[["metric", "group", "skewness", "normality_status", "warnings"]].round(3).head(6).to_dict(orient="records"))
+print(posthoc_df[["metric", "group_a", "group_b", "method_name", "adjusted_p_value"]].round(6).head(6).to_dict(orient="records"))
 ```
 
 ```text
-['metric', 'group', 'n', 'mean', 'sigma', 'lsl', 'nominal', 'usl', 'cp', 'cpl', 'cpu', 'cpk', 'cp_ci', 'cpl_ci', 'cpu_ci', 'cpk_ci', 'warnings']
-['metric', 'group', 'n', 'mean', 'std', 'median', 'q1', 'q3', 'iqr', 'min', 'max', 'cp', 'cpl', 'cpu', 'cpk', 'cp_ci', 'cpk_ci', 'warnings']
-['metric', 'group', 'n', 'skewness', 'excess_kurtosis', 'normality_test', 'normality_p_value', 'normality_status', 'warnings']
-['metric', 'group_a', 'group_b', 'test_name', 'p_value', 'adjusted_p_value', 'significant', 'effect_size', 'effect_type', 'method_family', 'comparison_estimate', 'comparison_estimate_label', 'comparison_ci', 'effect_size_ci', 'warnings']
-[]
+[{'metric': 'diameter', 'group': 'Line A', 'n': 3, 'mean': 10.02, 'std': 0.01, 'cpk': 9.333},
+ {'metric': 'diameter', 'group': 'Line B', 'n': 3, 'mean': 10.193, 'std': 0.015, 'cpk': 2.328},
+ {'metric': 'diameter', 'group': 'Line C', 'n': 3, 'mean': 9.93, 'std': 0.01, 'cpk': 7.667},
+ {'metric': 'roughness', 'group': 'Line A', 'n': 3, 'mean': 1.25, 'std': 0.05, 'cpk': 3.0},
+ {'metric': 'roughness', 'group': 'Line B', 'n': 3, 'mean': 1.577, 'std': 0.025, 'cpk': 2.958},
+ {'metric': 'roughness', 'group': 'Line C', 'n': 3, 'mean': 1.1, 'std': 0.02, 'cpk': 5.0}]
+[{'metric': 'diameter', 'group_a': 'Line A', 'group_b': 'Line B', 'adjusted_p_value': 5e-06, 'effect_size': -13.426342, 'method_family': 'tukey_hsd'},
+ {'metric': 'diameter', 'group_a': 'Line A', 'group_b': 'Line C', 'adjusted_p_value': 0.000233, 'effect_size': 9.0, 'method_family': 'tukey_hsd'},
+ {'metric': 'diameter', 'group_a': 'Line B', 'group_b': 'Line C', 'adjusted_p_value': 0.0, 'effect_size': 20.397712, 'method_family': 'tukey_hsd'},
+ {'metric': 'roughness', 'group_a': 'Line A', 'group_b': 'Line B', 'adjusted_p_value': 5.9e-05, 'effect_size': -8.253089, 'method_family': 'tukey_hsd'},
+ {'metric': 'roughness', 'group_a': 'Line A', 'group_b': 'Line C', 'adjusted_p_value': 0.004188, 'effect_size': 3.939193, 'method_family': 'tukey_hsd'},
+ {'metric': 'roughness', 'group_a': 'Line B', 'group_b': 'Line C', 'adjusted_p_value': 7e-06, 'effect_size': 20.970537, 'method_family': 'tukey_hsd'}]
+[{'metric': 'diameter', 'group': 'Line A', 'cp': 10.0, 'cpk': 9.333, 'warnings': ['ci_unavailable_n_lt_25']},
+ {'metric': 'diameter', 'group': 'Line B', 'cp': 6.547, 'cpk': 2.328, 'warnings': ['ci_unavailable_n_lt_25']},
+ {'metric': 'diameter', 'group': 'Line C', 'cp': 10.0, 'cpk': 7.667, 'warnings': ['ci_unavailable_n_lt_25']},
+ {'metric': 'roughness', 'group': 'Line A', 'cp': 3.333, 'cpk': 3.0, 'warnings': ['ci_unavailable_n_lt_25']},
+ {'metric': 'roughness', 'group': 'Line B', 'cp': 6.623, 'cpk': 2.958, 'warnings': ['ci_unavailable_n_lt_25']},
+ {'metric': 'roughness', 'group': 'Line C', 'cp': 8.333, 'cpk': 5.0, 'warnings': ['ci_unavailable_n_lt_25']}]
+[{'metric': 'diameter', 'group': 'Line A', 'skewness': 0.0, 'normality_status': 'skipped_n_lt_8', 'warnings': []},
+ {'metric': 'diameter', 'group': 'Line B', 'skewness': 0.935, 'normality_status': 'skipped_n_lt_8', 'warnings': []},
+ {'metric': 'diameter', 'group': 'Line C', 'skewness': 0.0, 'normality_status': 'skipped_n_lt_8', 'warnings': []},
+ {'metric': 'roughness', 'group': 'Line A', 'skewness': 0.0, 'normality_status': 'skipped_n_lt_8', 'warnings': []},
+ {'metric': 'roughness', 'group': 'Line B', 'skewness': -0.586, 'normality_status': 'skipped_n_lt_8', 'warnings': []},
+ {'metric': 'roughness', 'group': 'Line C', 'skewness': 0.0, 'normality_status': 'skipped_n_lt_8', 'warnings': []}]
+[{'metric': 'diameter', 'group_a': 'Line A', 'group_b': 'Line B', 'method_name': 'Tukey HSD', 'adjusted_p_value': 5e-06},
+ {'metric': 'diameter', 'group_a': 'Line A', 'group_b': 'Line C', 'method_name': 'Tukey HSD', 'adjusted_p_value': 0.000233},
+ {'metric': 'diameter', 'group_a': 'Line B', 'group_b': 'Line C', 'method_name': 'Tukey HSD', 'adjusted_p_value': 0.0},
+ {'metric': 'roughness', 'group_a': 'Line A', 'group_b': 'Line B', 'method_name': 'Tukey HSD', 'adjusted_p_value': 5.9e-05},
+ {'metric': 'roughness', 'group_a': 'Line A', 'group_b': 'Line C', 'method_name': 'Tukey HSD', 'adjusted_p_value': 0.004188},
+ {'metric': 'roughness', 'group_a': 'Line B', 'group_b': 'Line C', 'method_name': 'Tukey HSD', 'adjusted_p_value': 7e-06}]
 ```
 
 If you want plain dict rows instead of pandas objects, use:
@@ -176,13 +275,21 @@ result = analyze_metric(
     ),
 )
 
-print(result.simulation_validation.omnibus_significant_rate)
-print(result.simulation_validation.method_consistency_rate)
+print(
+    {
+        "omnibus_significant_rate": round(result.simulation_validation.omnibus_significant_rate, 2),
+        "method_consistency_rate": round(result.simulation_validation.method_consistency_rate, 2),
+        "selected_test_counts": result.simulation_validation.selected_test_counts,
+        "pairwise_stability": list(result.simulation_validation.pairwise_stability),
+    }
+)
 ```
 
 ```text
-1.0
-0.69
+{'omnibus_significant_rate': 1.0,
+ 'method_consistency_rate': 0.69,
+ 'selected_test_counts': (('ANOVA', 62), ('Kruskal-Wallis', 138)),
+ 'pairwise_stability': []}
 ```
 
 This resamples each group with replacement, reruns the analysis, and reports how stable the omnibus and pairwise decisions are across the simulated runs.
@@ -205,11 +312,18 @@ df = pd.DataFrame(
 )
 
 results = analyze_dataframe(df)
-results[0].diagnostics.comment
+summary = {
+    "test": results[0].omnibus.test_name,
+    "p_value": round(results[0].omnibus.p_value, 4),
+    "comment": results[0].diagnostics.comment,
+}
+summary
 ```
 
 ```text
-'Analyzed: pairwise comparison and capability policy are enabled.'
+{'test': 'Mann-Whitney U',
+ 'p_value': 0.3333,
+ 'comment': 'Analyzed: pairwise comparison and capability policy are enabled.'}
 ```
 
 For hosted notebooks, use the same package source as your environment provides
