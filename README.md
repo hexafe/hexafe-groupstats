@@ -58,6 +58,13 @@ print(result.analysis_policy.analysis_restriction_label)
 print(result.pairwise_results[0].test_name)
 ```
 
+```text
+diameter
+Student t-test
+Full analysis
+Student t-test
+```
+
 ## Example: `analyze_dataframe` with pandas
 
 ```python
@@ -78,6 +85,10 @@ df = pd.DataFrame(
 results = analyze_dataframe(df)
 for result in results:
     print(result.metric, result.group_order, result.spec_status.value)
+```
+
+```text
+diameter ('Line A', 'Line B') EXACT_MATCH
 ```
 
 For CSV files from multiple sensors, the recommended shape is a tidy table:
@@ -126,6 +137,14 @@ print(pairwise_df.columns.tolist())
 print(posthoc_df.columns.tolist())
 ```
 
+```text
+['metric', 'group', 'n', 'mean', 'sigma', 'lsl', 'nominal', 'usl', 'cp', 'cpl', 'cpu', 'cpk', 'cp_ci', 'cpl_ci', 'cpu_ci', 'cpk_ci', 'warnings']
+['metric', 'group', 'n', 'mean', 'std', 'median', 'q1', 'q3', 'iqr', 'min', 'max', 'cp', 'cpl', 'cpu', 'cpk', 'cp_ci', 'cpk_ci', 'warnings']
+['metric', 'group', 'n', 'skewness', 'excess_kurtosis', 'normality_test', 'normality_p_value', 'normality_status', 'warnings']
+['metric', 'group_a', 'group_b', 'test_name', 'p_value', 'adjusted_p_value', 'significant', 'effect_size', 'effect_type', 'method_family', 'comparison_estimate', 'comparison_estimate_label', 'comparison_ci', 'effect_size_ci', 'warnings']
+[]
+```
+
 If you want plain dict rows instead of pandas objects, use:
 
 ```python
@@ -161,6 +180,11 @@ print(result.simulation_validation.omnibus_significant_rate)
 print(result.simulation_validation.method_consistency_rate)
 ```
 
+```text
+1.0
+0.69
+```
+
 This resamples each group with replacement, reruns the analysis, and reports how stable the omnibus and pairwise decisions are across the simulated runs.
 
 ## Minimal notebook / Colab usage
@@ -184,6 +208,10 @@ results = analyze_dataframe(df)
 results[0].diagnostics.comment
 ```
 
+```text
+'Analyzed: pairwise comparison and capability policy are enabled.'
+```
+
 For hosted notebooks, use the same package source as your environment provides
 for installs, such as a wheel file or a git URL instead of a local editable path.
 
@@ -197,4 +225,3 @@ for installs, such as a wheel file or a git URL instead of a local editable path
   - `Kruskal-Wallis` -> Dunn
 - Capability metrics are computed per group only when specs are valid and policy allows it.
 - Monte Carlo validation is opt-in and disabled by default.
-- The package does not depend on Metroliza at runtime.
