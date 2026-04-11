@@ -5,6 +5,7 @@ import pytest
 from scipy.stats import norm
 
 from hexafe_groupstats import AnalysisConfig, SpecLimits, analyze_metric
+from hexafe_groupstats.core import posthoc as posthoc_module
 
 
 def test_empty_group_is_safe_and_marks_insufficient_pairwise():
@@ -167,3 +168,29 @@ def test_distribution_profiles_and_simulation_validation_are_optional():
     assert result.simulation_validation is not None
     assert result.simulation_validation.iterations == 8
     assert result.simulation_validation.selected_test_counts
+
+
+def test_tukey_path_remains_compatible_with_legacy_scipy_signature(monkeypatch):
+    real_tukey_hsd = posthoc_module.tukey_hsd
+
+    def legacy_tukey_hsd(*args):
+        return real_tukey_hsd(*args)
+
+    monkeypatch.setattr(posthoc_module, "tukey_hsd", legacy_tukey_hsd)
+
+    base = norm.ppf(np.linspace(0.1, 0.9, 12))
+    result = analyze_metric("metric", {"A": base, "B": base + 0.2, "C": base - 0.2})
+
+    assert result.posthoc_summary is not None
+    assert result.posthoc_summary.family in {"tukey_hsd", "tukey_kramer"}
+
+
+def test_games_howell_falls_back_when_equal_var_api_is_unavailable(monkeypatch):
+    monkeypatch.setattr(posthoc_module, "_tukey_supports_equal_var", lambda: False)
+
+    base = norm.ppf(np.linspace(0.1, 0.9, 12))
+    result = analyze_metric("metric", {"A": base, "B": base * 3 + 0.3, "C": base * 5 - 0.3})
+
+    assert result.posthoc_summary is not None
+    assert result.posthoc_summary.family == "games_howell"
+    assert "games_howell_manual_fallback" in result.posthoc_summary.warnings

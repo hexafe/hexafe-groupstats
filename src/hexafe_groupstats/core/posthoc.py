@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
 from itertools import combinations
 
 import numpy as np
-from scipy.stats import norm, rankdata, tiecorrect, tukey_hsd
+from scipy.stats import norm, rankdata, studentized_range, tiecorrect, tukey_hsd
 
 from ..config import AnalysisConfig
 from ..domain.enums import PostHocMethod, SelectionMode
@@ -86,6 +87,142 @@ def _pairwise_effect_ci_lookup(
     )
 
 
+def _tukey_supports_equal_var() -> bool:
+    try:
+        return "equal_var" in inspect.signature(tukey_hsd).parameters
+    except (TypeError, ValueError):  # pragma: no cover - defensive fallback
+        return False
+
+
+def _games_howell_row(
+    *,
+    metric_name: str,
+    group_a: str,
+    group_b: str,
+    left: np.ndarray,
+    right: np.ndarray,
+    group_count: int,
+    alpha: float,
+    ci_level: float,
+    effect_size_ci: tuple[float, float] | None,
+) -> PostHocComparisonResult:
+    mean_left = float(np.mean(left))
+    mean_right = float(np.mean(right))
+    diff = mean_left - mean_right
+    var_left = float(np.var(left, ddof=1))
+    var_right = float(np.var(right, ddof=1))
+    se_sq = (var_left / left.size) + (var_right / right.size)
+    if not np.isfinite(se_sq) or se_sq <= 0.0:
+        return PostHocComparisonResult(
+            metric=metric_name,
+            group_a=group_a,
+            group_b=group_b,
+            family="games_howell",
+            method_name="Games-Howell",
+            statistic=None,
+            raw_p_value=None,
+            adjusted_p_value=None,
+            significant=False,
+            effect_size=cohen_d(left, right),
+            effect_type="cohen_d",
+            comparison_estimate=diff,
+            comparison_estimate_label="mean_difference",
+            comparison_ci=None,
+            effect_size_ci=effect_size_ci,
+            warnings=("games_howell_unavailable",),
+        )
+
+    se = float(np.sqrt(se_sq))
+    df_denom = ((var_left / left.size) ** 2) / max(left.size - 1, 1) + ((var_right / right.size) ** 2) / max(right.size - 1, 1)
+    df = None if not np.isfinite(df_denom) or np.isclose(df_denom, 0.0) else float((se_sq**2) / df_denom)
+    if df is None or not np.isfinite(df) or df <= 0.0:
+        return PostHocComparisonResult(
+            metric=metric_name,
+            group_a=group_a,
+            group_b=group_b,
+            family="games_howell",
+            method_name="Games-Howell",
+            statistic=None,
+            raw_p_value=None,
+            adjusted_p_value=None,
+            significant=False,
+            effect_size=cohen_d(left, right),
+            effect_type="cohen_d",
+            comparison_estimate=diff,
+            comparison_estimate_label="mean_difference",
+            comparison_ci=None,
+            effect_size_ci=effect_size_ci,
+            warnings=("games_howell_df_unavailable",),
+        )
+
+    q_stat = abs(diff) * np.sqrt(2.0) / se
+    adjusted_p = float(studentized_range.sf(q_stat, group_count, df))
+    q_crit = float(studentized_range.ppf(ci_level, group_count, df))
+    margin = q_crit * se / np.sqrt(2.0)
+    return PostHocComparisonResult(
+        metric=metric_name,
+        group_a=group_a,
+        group_b=group_b,
+        family="games_howell",
+        method_name="Games-Howell",
+        statistic=diff,
+        raw_p_value=adjusted_p,
+        adjusted_p_value=adjusted_p,
+        significant=bool(adjusted_p < alpha),
+        effect_size=cohen_d(left, right),
+        effect_type="cohen_d",
+        comparison_estimate=diff,
+        comparison_estimate_label="mean_difference",
+        comparison_ci=(diff - margin, diff + margin),
+        effect_size_ci=effect_size_ci,
+    )
+
+
+def _run_games_howell_fallback(
+    *,
+    metric_name: str,
+    labels: list[str],
+    groups: list[np.ndarray],
+    backend: GroupStatsBackend,
+    config: AnalysisConfig,
+) -> PostHocSummary:
+    pairs = [(labels[left], labels[right]) for left, right in combinations(range(len(labels)), 2)]
+    effect_cis = _pairwise_effect_ci_lookup(
+        backend=backend,
+        family="games_howell",
+        labels=labels,
+        groups=groups,
+        pairs=pairs,
+        config=config,
+    )
+    rows = []
+    for left_index, right_index in combinations(range(len(labels)), 2):
+        group_a = labels[left_index]
+        group_b = labels[right_index]
+        rows.append(
+            _games_howell_row(
+                metric_name=metric_name,
+                group_a=group_a,
+                group_b=group_b,
+                left=groups[left_index],
+                right=groups[right_index],
+                group_count=len(groups),
+                alpha=config.alpha,
+                ci_level=config.ci_level,
+                effect_size_ci=effect_cis.get((group_a, group_b)),
+            )
+        )
+
+    return PostHocSummary(
+        family="games_howell",
+        method_name="Games-Howell",
+        correction_method=None,
+        selection_detail="Unequal-variance parametric multi-group path selected Games-Howell.",
+        results=tuple(rows),
+        warnings=("games_howell_manual_fallback",),
+    )
+
+
 def _run_tukey_family(
     *,
     metric_name: str,
@@ -97,7 +234,18 @@ def _run_tukey_family(
 ) -> PostHocSummary:
     warnings: list[str] = []
     try:
-        result = tukey_hsd(*groups, equal_var=equal_var)
+        if equal_var:
+            result = tukey_hsd(*groups)
+        elif _tukey_supports_equal_var():
+            result = tukey_hsd(*groups, equal_var=False)
+        else:
+            return _run_games_howell_fallback(
+                metric_name=metric_name,
+                labels=labels,
+                groups=groups,
+                backend=backend,
+                config=config,
+            )
         comparison_ci = result.confidence_interval(confidence_level=config.ci_level)
     except Exception as exc:  # pragma: no cover - defensive fallback
         warnings.append(f"posthoc_error:{exc}")
@@ -382,4 +530,3 @@ __all__ = [
     "run_posthoc_analysis",
     "select_posthoc_family",
 ]
-
