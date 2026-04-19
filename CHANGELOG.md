@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Structured metric insights with engine-owned `headline`, `why`, `first_action`, caution tags, priority, and status class.
+- Capability confidence classification using a single benchmark, lower confidence bounds when available, and explicit CI-unavailable cautions.
+- Deterministic distinction between capability spread issues, centering issues, practical group differences, statistically minor effects, and order-gated drift cautions.
+
 ## 0.1.0rc1
 
 Release candidate for the first standalone `hexafe-groupstats` package release.
@@ -19,4 +27,3 @@ Release candidate for the first standalone `hexafe-groupstats` package release.
 - Metroliza runtime coupling is intentionally excluded.
 - Workbook, UI, export, and report layout code remain outside the package.
 - Rust acceleration is scaffolded but not required for this release candidate.
-

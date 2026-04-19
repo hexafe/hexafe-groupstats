@@ -178,6 +178,16 @@ class SimulationValidationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class MetricInsight:
+    headline: str
+    why: str
+    first_action: str
+    confidence_or_caution: tuple[str, ...] = ()
+    priority_score: float | None = None
+    status_class: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisDiagnostics:
     comment: str
     warnings: tuple[str, ...] = ()
@@ -212,6 +222,7 @@ class MetricAnalysisResult:
     capability_results: tuple[CapabilityResult, ...] = ()
     distribution_profiles: tuple[DistributionProfile, ...] = ()
     simulation_validation: SimulationValidationResult | None = None
+    structured_insights: tuple[MetricInsight, ...] = ()
     insights: tuple[str, ...] = ()
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
@@ -224,6 +235,7 @@ __all__ = [
     "DistributionProfile",
     "GroupPreprocessResult",
     "MetricAnalysisResult",
+    "MetricInsight",
     "NormalityCheckResult",
     "OmnibusTestResult",
     "PairwiseResult",

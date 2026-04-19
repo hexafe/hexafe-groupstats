@@ -2,7 +2,14 @@
 
 from .enums import BackendName, CorrectionMethod, MultiGroupEffect, PostHocMethod, SelectionMode, SpecStatus, VarianceTest
 from .models import AnalysisPolicy, SpecLimits
-from .result_models import CapabilityResult, DescriptiveStats, DistributionProfile, MetricAnalysisResult, PairwiseResult
+from .result_models import (
+    CapabilityResult,
+    DescriptiveStats,
+    DistributionProfile,
+    MetricAnalysisResult,
+    MetricInsight,
+    PairwiseResult,
+)
 
 __all__ = [
     "AnalysisPolicy",
@@ -12,6 +19,7 @@ __all__ = [
     "DescriptiveStats",
     "DistributionProfile",
     "MetricAnalysisResult",
+    "MetricInsight",
     "MultiGroupEffect",
     "PairwiseResult",
     "PostHocMethod",

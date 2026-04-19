@@ -11,6 +11,7 @@ Current engine coverage includes:
 - multiple-comparison correction
 - effect sizes and confidence intervals
 - per-group capability metrics
+- structured decision-oriented metric insights
 - diagnostic-only distribution profiles
 - optional Monte Carlo stability validation
 
@@ -26,6 +27,7 @@ Top-level exports:
 - `SpecLimits`
 - `AnalysisConfig`
 - `MetricAnalysisResult`
+- `MetricInsight`
 - `PairwiseResult`
 - `DescriptiveStats`
 - `AnalysisPolicy`
@@ -83,7 +85,12 @@ summary = {
         {"group": row.group, "cpk": round(row.cpk, 3)}
         for row in result.capability_results
     ],
-    "insights": list(result.insights[:2]),
+    "insight": {
+        "headline": result.structured_insights[0].headline,
+        "why": result.structured_insights[0].why,
+        "first_action": result.structured_insights[0].first_action,
+        "cautions": list(result.structured_insights[0].confidence_or_caution),
+    },
 }
 
 pprint(summary, sort_dicts=False)
@@ -111,9 +118,10 @@ pprint(summary, sort_dicts=False)
  'capability': [{'group': 'Line A', 'cpk': 6.152},
                 {'group': 'Line B', 'cpk': 1.871},
                 {'group': 'Line C', 'cpk': 4.009}],
- 'insights': ['Status: EXACT_MATCH; mode=Full analysis.',
-              'Primary signal: Line B vs Line C via Tukey HSD (adj p=0.0000, '
-              'effect=14.432).']}
+ 'insight': {'headline': 'meaningful group difference',
+             'why': 'Line B vs Line C is significant after correction and the effect is large.',
+             'first_action': 'Start with this pair and verify likely process drivers before changing settings.',
+             'cautions': ['time_order_unavailable']}}
 ```
 
 ## Example: `analyze_dataframe` with pandas

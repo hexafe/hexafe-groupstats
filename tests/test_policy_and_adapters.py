@@ -120,12 +120,15 @@ def test_metroliza_adapter_accepts_payload_and_emits_rows():
     rows = to_metroliza_rows(result)
 
     assert result.metric == "diameter"
-    assert set(rows) == {
+    assert set(rows) >= {
         "metric_row",
+        "structured_insights",
+        "insights",
         "descriptive_rows",
         "pairwise_rows",
         "posthoc_rows",
         "capability_rows",
         "distribution_rows",
     }
+    assert rows["structured_insights"][0]["headline"]
     assert rows["pairwise_rows"][0]["test_used"] in {"Mann-Whitney U", "Student t-test", "Welch t-test"}
