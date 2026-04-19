@@ -168,6 +168,7 @@ def test_distribution_profiles_and_simulation_validation_are_optional():
     assert result.simulation_validation is not None
     assert result.simulation_validation.iterations == 8
     assert result.simulation_validation.selected_test_counts
+    assert result.simulation_validation.pairwise_stability
 
 
 def test_tukey_path_remains_compatible_with_legacy_scipy_signature(monkeypatch):

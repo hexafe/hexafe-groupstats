@@ -83,13 +83,22 @@ The CSV should be tidy: one row per measurement, with columns for metric, group,
 
 ## Main Objects
 
-- `analyze_metric(...)`: use when you already have Python lists grouped by line, machine, batch, supplier, or treatment.
-- `analyze_dataframe(...)`: use when your data is in a pandas DataFrame or CSV.
-- `SpecLimits`: pass lower, nominal, and upper specs so the engine can compute capability and centering signals.
-- `MetricAnalysisResult`: typed result object containing assumptions, selected test, post-hoc comparisons, capability, diagnostics, and insights.
-- `MetricInsight`: compact engine-owned decision summary with `headline`, `why`, `first_action`, and caution tags.
+| Object | Use it for |
+| --- | --- |
+| `analyze_metric(...)` / `compare_groups(...)` | Already-grouped samples, such as `{"Line A": [99.8, 100.1], "Line B": [100.9, 101.0]}`. |
+| `analyze_dataframe(...)` | Tidy pandas or CSV-style data with metric, group, and value columns. |
+| `SpecLimits(...)` | Optional lower, nominal, and upper specs for capability and centering signals. |
+| `AnalysisConfig` | Statistical settings such as alpha, correction, post-hoc method, confidence intervals, diagnostics, simulation, and backend selection. |
+| `MetricAnalysisResult` | Typed result object containing assumptions, selected tests, comparisons, capability, diagnostics, and insights. |
+| `MetricInsight` | Compact decision summary with `headline`, `why`, `first_action`, and caution tags. |
 
-`hexafe-groupstats` accepts grouped numeric samples through `analyze_metric(...)` / `compare_groups(...)` as a mapping such as `{"Line A": [99.8, 100.1], "Line B": [100.9, 101.0]}`, or tidy DataFrame/CSV-style data through `analyze_dataframe(...)` with configurable `metric_column`, `group_column`, `value_column`, `lsl_column`, `nominal_column`, and `usl_column`; Metroliza-shaped payloads can use `hexafe_groupstats.adapters.metroliza.analyze_metroliza_payload(...)`. At minimum, provide a metric name and grouped measurement values; group-comparison output needs at least two usable non-empty groups after numeric coercion, while blank/non-numeric values are dropped. Spec limits are optional, but capability and centering output require valid lower, nominal, and upper specs, supplied as `SpecLimits(...)`, a dict with `lsl`/`nominal`/`usl` or `LSL`/`NOMINAL`/`USL`, a `(lsl, nominal, usl)` tuple/list, or DataFrame spec columns. Statistical behavior can be configured with `AnalysisConfig`, including alpha, multiple-comparison correction, post-hoc selection, confidence intervals, small-n threshold, variance test, multi-group effect size, distribution diagnostics, capability benchmark, ordered-sequence stability checks, Monte Carlo validation, and backend selection.
+Input expectations:
+
+- For grouped samples, pass a metric name and a mapping of group labels to measurement values; `compare_groups(...)` also accepts a custom `metric_name`.
+- For DataFrame/CSV-style data, configure `metric_column`, `group_column`, `value_column`, `lsl_column`, `nominal_column`, and `usl_column` when your column names differ from the defaults.
+- For Metroliza-shaped payloads, use `hexafe_groupstats.adapters.metroliza.analyze_metroliza_payload(...)`.
+- Blank and non-numeric values are dropped after numeric coercion; group-comparison output needs at least two usable non-empty groups.
+- Specs can be `SpecLimits(...)`, a dict with `lsl`/`nominal`/`usl` or `LSL`/`NOMINAL`/`USL`, a `(lsl, nominal, usl)` tuple/list, or DataFrame spec columns.
 
 ## Real-Life Example: Packaging Fill Weight
 
@@ -331,7 +340,16 @@ print(
         "omnibus_significant_rate": round(result.simulation_validation.omnibus_significant_rate, 2),
         "method_consistency_rate": round(result.simulation_validation.method_consistency_rate, 2),
         "selected_test_counts": result.simulation_validation.selected_test_counts,
-        "pairwise_stability": list(result.simulation_validation.pairwise_stability),
+        "pairwise_stability": [
+            {
+                "pair": f"{row.group_a} vs {row.group_b}",
+                "significant_rate": round(row.significant_rate, 2),
+                "median_p_adj": None
+                if row.median_adjusted_p_value is None
+                else round(row.median_adjusted_p_value, 4),
+            }
+            for row in result.simulation_validation.pairwise_stability
+        ],
     }
 )
 ```
@@ -340,10 +358,18 @@ print(
 {'omnibus_significant_rate': 1.0,
  'method_consistency_rate': 0.69,
  'selected_test_counts': (('ANOVA', 62), ('Kruskal-Wallis', 138)),
- 'pairwise_stability': []}
+ 'pairwise_stability': [{'pair': 'sensor_A vs sensor_B',
+                         'significant_rate': 0.31,
+                         'median_p_adj': 0.1817},
+                        {'pair': 'sensor_A vs sensor_C',
+                         'significant_rate': 0.25,
+                         'median_p_adj': 0.1936},
+                        {'pair': 'sensor_B vs sensor_C',
+                         'significant_rate': 1.0,
+                         'median_p_adj': 0.0046}]}
 ```
 
-This resamples each group with replacement, reruns the analysis, and reports how stable the omnibus and pairwise decisions are across the simulated runs.
+This resamples each group with replacement, reruns the analysis, and reports how stable the omnibus and pairwise/post-hoc decisions are across the simulated runs.
 
 ## Notes
 

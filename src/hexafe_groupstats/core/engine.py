@@ -114,7 +114,7 @@ def analyze_groups(
         run_simulation_validation(
             metric_name=metric_name,
             groups=normalized_groups,
-            spec_limits=canonical_spec_limits,
+            spec_limits=spec_limits,
             config=replace(
                 config,
                 include_effect_size_ci=False,
