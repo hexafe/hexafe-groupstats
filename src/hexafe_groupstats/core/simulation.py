@@ -9,7 +9,6 @@ from typing import Any
 import numpy as np
 
 from ..config import AnalysisConfig
-from ..domain.models import SpecLimits
 from ..domain.result_models import SimulationPairStability, SimulationValidationResult
 
 
@@ -17,7 +16,7 @@ def run_simulation_validation(
     *,
     metric_name: str,
     groups: Mapping[str, Sequence[Any]],
-    spec_limits: SpecLimits,
+    spec_limits: Any,
     config: AnalysisConfig,
     iterations: int,
     seed: int,
