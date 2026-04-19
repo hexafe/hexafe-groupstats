@@ -34,222 +34,263 @@ Top-level exports:
 - `CapabilityResult`
 - `DistributionProfile`
 
-Install with pandas support if you want the DataFrame adapter:
+## Installation
+
+Use the pandas extra when you want CSV/DataFrame helpers. The core grouped-sample API only needs NumPy and SciPy.
+
+### Local app or project
+
+Install directly from GitHub into your application's environment:
 
 ```bash
-pip install -e .[pandas]
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install "hexafe-groupstats[pandas] @ git+https://github.com/hexafe/hexafe-groupstats.git@main"
 ```
 
-## Example: `analyze_metric` with dict groups
+For reproducible production installs, replace `main` with a tag or commit SHA.
+
+If you are working from a local checkout:
+
+```bash
+git clone https://github.com/hexafe/hexafe-groupstats.git
+cd hexafe-groupstats
+python -m pip install -e ".[dev]"
+```
+
+Then any local app that uses the same virtual environment can import `hexafe_groupstats`.
+
+### Google Colab
+
+Install the package in the first notebook cell:
+
+```python
+!pip -q install "hexafe-groupstats[pandas] @ git+https://github.com/hexafe/hexafe-groupstats.git@main"
+```
+
+To analyze your own CSV in Colab:
+
+```python
+from google.colab import files
+import pandas as pd
+
+uploaded = files.upload()
+df = pd.read_csv(next(iter(uploaded)))
+```
+
+The CSV should be tidy: one row per measurement, with columns for metric, group, value, and optional spec limits.
+
+## Main Objects
+
+- `analyze_metric(...)`: use when you already have Python lists grouped by line, machine, batch, supplier, or treatment.
+- `analyze_dataframe(...)`: use when your data is in a pandas DataFrame or CSV.
+- `SpecLimits`: pass lower, nominal, and upper specs so the engine can compute capability and centering signals.
+- `MetricAnalysisResult`: typed result object containing assumptions, selected test, post-hoc comparisons, capability, diagnostics, and insights.
+- `MetricInsight`: compact engine-owned decision summary with `headline`, `why`, `first_action`, and caution tags.
+
+## Real-Life Example: Packaging Fill Weight
+
+A plant fills nominal 100 g retail packs on three packaging lines. The acceptable range is 98.5 g to 101.5 g. The question is not only "are the lines different?", but also "which line needs action and why?"
 
 ```python
 from pprint import pprint
 
-from hexafe_groupstats import analyze_metric, SpecLimits
+from hexafe_groupstats import SpecLimits, analyze_metric
 
-result = analyze_metric(
-    "diameter",
-    {
-        "Line A": [10.02, 10.04, 10.01, 10.03, 10.05, 10.02],
-        "Line B": [10.18, 10.21, 10.17, 10.19, 10.20, 10.22],
-        "Line C": [9.91, 9.93, 9.95, 9.92, 9.94, 9.90],
-    },
-    spec_limits=SpecLimits(lsl=9.7, nominal=10.0, usl=10.3),
-)
+line_samples = {
+    "Line A": [
+        99.84, 99.91, 99.94, 99.96, 99.98, 100.00, 100.02, 100.04,
+        100.05, 100.07, 100.09, 100.11, 99.88, 99.93, 99.95, 99.97,
+        99.99, 100.01, 100.03, 100.06, 100.08, 100.10, 100.12, 100.15,
+        99.90, 99.96, 99.99, 100.02, 100.05, 100.09,
+    ],
+    "Line B": [
+        100.92, 100.98, 101.01, 101.03, 101.05, 101.07, 101.09, 101.11,
+        101.13, 101.16, 101.18, 101.21, 100.95, 101.00, 101.02, 101.04,
+        101.06, 101.08, 101.10, 101.12, 101.15, 101.17, 101.20, 101.24,
+        100.97, 101.04, 101.07, 101.10, 101.14, 101.19,
+    ],
+    "Line C": [
+        99.38, 99.54, 99.61, 99.69, 99.73, 99.82, 99.91, 100.04,
+        100.11, 100.23, 100.34, 100.49, 99.44, 99.57, 99.66, 99.75,
+        99.86, 99.97, 100.08, 100.19, 100.31, 100.43, 100.55, 100.66,
+        99.50, 99.70, 99.89, 100.06, 100.27, 100.45,
+    ],
+}
+
 
 def fmt_p(value):
-    return None if value is None else f"{value:.3g}"
+    if value is None:
+        return None
+    return "<0.0001" if value < 0.0001 else f"{value:.4f}"
+
+
+# Specs are supplied once because all three lines make the same product.
+result = analyze_metric(
+    "fill_weight_g",
+    line_samples,
+    spec_limits=SpecLimits(lsl=98.5, nominal=100.0, usl=101.5),
+)
+
+insight = result.structured_insights[0]
 
 summary = {
     "metric": result.metric,
-    "groups": result.group_order,
-    "omnibus": {
-        "test": result.omnibus.test_name,
-        "p_value": fmt_p(result.omnibus.p_value),
-        "effect_size": round(result.omnibus.effect_size, 3),
+    "groups": list(result.group_order),
+    "method_usage": {
+        "omnibus": result.omnibus.test_name,
+        "why_omnibus": result.assumptions.selection_detail,
+        "posthoc": result.posthoc_summary.method_name if result.posthoc_summary else None,
+        "why_posthoc": result.posthoc_summary.selection_detail if result.posthoc_summary else None,
     },
-    "posthoc": [
+    "omnibus_p": fmt_p(result.omnibus.p_value),
+    "insight": {
+        "headline": insight.headline,
+        "why": insight.why,
+        "first_action": insight.first_action,
+        "cautions": list(insight.confidence_or_caution),
+    },
+    "capability_watch": [
+        {
+            "group": row.group,
+            "cp": round(row.cp, 2) if row.cp is not None else None,
+            "cpk": round(row.cpk, 2) if row.cpk is not None else None,
+            "cpk_ci": None if row.cpk_ci is None else tuple(round(v, 2) for v in row.cpk_ci),
+        }
+        for row in sorted(
+            result.capability_results,
+            key=lambda row: float("inf") if row.cpk is None else row.cpk,
+        )[:2]
+    ],
+    "top_differences": [
         {
             "pair": f"{row.group_a} vs {row.group_b}",
             "p_adj": fmt_p(row.adjusted_p_value),
-            "significant": row.significant,
-            "effect": round(row.effect_size, 3),
+            "effect": round(row.effect_size, 2) if row.effect_size is not None else None,
+            "effect_type": row.effect_type,
         }
         for row in result.posthoc_results
     ],
-    "descriptive": [
-        {"group": row.group, "mean": round(row.mean, 3), "std": round(row.std, 3)}
-        for row in result.descriptive_stats
-    ],
-    "capability": [
-        {"group": row.group, "cpk": round(row.cpk, 3)}
-        for row in result.capability_results
-    ],
-    "insight": {
-        "headline": result.structured_insights[0].headline,
-        "why": result.structured_insights[0].why,
-        "first_action": result.structured_insights[0].first_action,
-        "cautions": list(result.structured_insights[0].confidence_or_caution),
-    },
 }
 
 pprint(summary, sort_dicts=False)
 ```
 
 ```text
-{'metric': 'diameter',
- 'groups': ('Line A', 'Line B', 'Line C'),
- 'omnibus': {'test': 'ANOVA', 'p_value': '1.93e-13', 'effect_size': 0.98},
- 'posthoc': [{'pair': 'Line A vs Line B',
-              'p_adj': '1.43e-10',
-              'significant': True,
-              'effect': -9.901},
-             {'pair': 'Line A vs Line C',
-              'p_adj': '1.05e-07',
-              'significant': True,
-              'effect': 6.139},
-             {'pair': 'Line B vs Line C',
-              'p_adj': '1.28e-13',
-              'significant': True,
-              'effect': 14.432}],
- 'descriptive': [{'group': 'Line A', 'mean': 10.028, 'std': 0.015},
-                 {'group': 'Line B', 'mean': 10.195, 'std': 0.019},
-                 {'group': 'Line C', 'mean': 9.925, 'std': 0.019}],
- 'capability': [{'group': 'Line A', 'cpk': 6.152},
-                {'group': 'Line B', 'cpk': 1.871},
-                {'group': 'Line C', 'cpk': 4.009}],
+{'metric': 'fill_weight_g',
+ 'groups': ['Line A', 'Line B', 'Line C'],
+ 'method_usage': {'omnibus': 'Welch ANOVA',
+                  'why_omnibus': 'Shapiro-Wilk passed for all usable groups but the variance test failed, so the unequal-variance parametric path was used.',
+                  'posthoc': 'Games-Howell',
+                  'why_posthoc': 'Unequal-variance parametric multi-group path selected Games-Howell.'},
+ 'omnibus_p': '<0.0001',
  'insight': {'headline': 'meaningful group difference',
-             'why': 'Line B vs Line C is significant after correction and the effect is large.',
+             'why': 'Line B vs Line C is significant after correction and the effect is large (cohen_d=4.26). Possibly capable, confidence weak also applies.',
              'first_action': 'Start with this pair and verify likely process drivers before changing settings.',
-             'cautions': ['time_order_unavailable']}}
+             'cautions': ['time_order_unavailable']},
+ 'capability_watch': [{'group': 'Line C',
+                       'cp': 1.39,
+                       'cpk': 1.37,
+                       'cpk_ci': (1.0, 1.74)},
+                      {'group': 'Line B',
+                       'cp': 6.12,
+                       'cpk': 1.69,
+                       'cpk_ci': (1.24, 2.14)}],
+ 'top_differences': [{'pair': 'Line A vs Line B',
+                      'p_adj': '<0.0001',
+                      'effect': -13.6,
+                      'effect_type': 'cohen_d'},
+                     {'pair': 'Line A vs Line C',
+                      'p_adj': '0.8590',
+                      'effect': 0.14,
+                      'effect_type': 'cohen_d'},
+                     {'pair': 'Line B vs Line C',
+                      'p_adj': '<0.0001',
+                      'effect': 4.26,
+                      'effect_type': 'cohen_d'}]}
 ```
 
-## Example: `analyze_dataframe` with pandas
+Short reasoning behind the result:
 
-```python
-import pandas as pd
-from hexafe_groupstats import analyze_dataframe
+- Welch ANOVA was selected because the normality checks passed but the variance check failed.
+- Games-Howell was selected because it is the matching post-hoc method for the unequal-variance multi-group path.
+- The insight is not based on p-value alone; it combines corrected significance, effect size, capability, and caution tags.
+- Line B is shifted high. Line C has the weakest capability confidence because its Cpk lower bound falls below the default 1.33 benchmark.
+- `time_order_unavailable` means the input has no trustworthy run order, so the engine does not invent a drift/stability judgement.
 
-df = pd.DataFrame(
-    {
-        "metric": ["diameter"] * 9 + ["roughness"] * 9,
-        "group": ["Line A"] * 3 + ["Line B"] * 3 + ["Line C"] * 3 + ["Line A"] * 3 + ["Line B"] * 3 + ["Line C"] * 3,
-        "value": [
-            10.01, 10.03, 10.02,
-            10.18, 10.19, 10.21,
-            9.92, 9.94, 9.93,
-            1.20, 1.30, 1.25,
-            1.55, 1.60, 1.58,
-            1.10, 1.08, 1.12,
-        ],
-        "LSL": [9.7] * 9 + [0.8] * 9,
-        "NOMINAL": [10.0] * 9 + [1.2] * 9,
-        "USL": [10.3] * 9 + [1.8] * 9,
-    }
-)
+## Analyze CSV or Pandas Data
 
-results = analyze_dataframe(df)
-summary = [
-    {
-        "metric": result.metric,
-        "omnibus": result.omnibus.test_name,
-        "p_value": f"{result.omnibus.p_value:.3g}",
-        "spec_status": result.spec_status.value,
-    }
-    for result in results
-]
-
-print(summary)
-```
+For files, use a tidy table:
 
 ```text
-[{'metric': 'diameter',
-  'omnibus': 'ANOVA',
-  'p_value': '5.12e-07',
-  'spec_status': 'EXACT_MATCH'},
- {'metric': 'roughness',
-  'omnibus': 'ANOVA',
-  'p_value': '7.35e-06',
-  'spec_status': 'EXACT_MATCH'}]
-```
-
-For CSV files from multiple sensors, the recommended shape is a tidy table:
-
-```text
-metric,group,value,LSL,NOMINAL,USL
-temperature,sensor_A,21.4,20,22,24
-temperature,sensor_B,22.1,20,22,24
-pressure,sensor_A,1.02,0.9,1.0,1.1
-pressure,sensor_B,1.05,0.9,1.0,1.1
+metric,line,value,LSL,NOMINAL,USL
+fill_weight_g,Line A,99.84,98.5,100.0,101.5
+fill_weight_g,Line A,99.91,98.5,100.0,101.5
+fill_weight_g,Line B,100.92,98.5,100.0,101.5
+fill_weight_g,Line B,100.98,98.5,100.0,101.5
+fill_weight_g,Line C,99.38,98.5,100.0,101.5
+fill_weight_g,Line C,99.54,98.5,100.0,101.5
 ```
 
 Then:
 
 ```python
-df = pd.read_csv("sensors.csv")
-results = analyze_dataframe(df)
+import pandas as pd
+
+from hexafe_groupstats import analyze_dataframe
+
+df = pd.read_csv("fill_weights.csv")
+
+# Use group_column="line" because this CSV names the group column "line".
+results = analyze_dataframe(df, group_column="line")
+
+for result in results:
+    insight = result.structured_insights[0]
+    print(
+        {
+            "metric": result.metric,
+            "test": result.omnibus.test_name,
+            "headline": insight.headline,
+            "first_action": insight.first_action,
+        }
+    )
 ```
 
-If your CSV is wide, reshape it first with `melt(...)` into `metric` / `group` / `value` columns.
+If your CSV is wide, reshape it first with `melt(...)` into metric, group, and value columns.
 
-## Example: convert results to DataFrames
+## Convert Results To DataFrames
+
+The pandas adapters flatten typed results into report-ready tables.
 
 ```python
-from hexafe_groupstats import analyze_dataframe
 from hexafe_groupstats.adapters.pandas import (
     results_to_capability_dataframe,
     results_to_descriptive_dataframe,
-    results_to_distribution_dataframe,
-    results_to_pairwise_dataframe,
     results_to_posthoc_dataframe,
 )
 
-results = analyze_dataframe(df)
-
-capability_df = results_to_capability_dataframe(results)
 descriptive_df = results_to_descriptive_dataframe(results)
-distribution_df = results_to_distribution_dataframe(results)
-pairwise_df = results_to_pairwise_dataframe(results)
 posthoc_df = results_to_posthoc_dataframe(results)
+capability_df = results_to_capability_dataframe(results)
 
-print(descriptive_df[["metric", "group", "n", "mean", "std", "cpk"]].round(3).head(6).to_dict(orient="records"))
-print(pairwise_df[["metric", "group_a", "group_b", "adjusted_p_value", "effect_size", "method_family"]].round(6).head(6).to_dict(orient="records"))
-print(capability_df[["metric", "group", "cp", "cpk", "warnings"]].round(3).head(6).to_dict(orient="records"))
-print(distribution_df[["metric", "group", "skewness", "normality_status", "warnings"]].round(3).head(6).to_dict(orient="records"))
-print(posthoc_df[["metric", "group_a", "group_b", "method_name", "adjusted_p_value"]].round(6).head(6).to_dict(orient="records"))
+print(descriptive_df[["metric", "group", "n", "mean", "std", "cpk"]].round(3).to_dict(orient="records"))
+print(posthoc_df[["metric", "group_a", "group_b", "method_name", "adjusted_p_value", "effect_size"]].round(6).to_dict(orient="records"))
+print(capability_df[["metric", "group", "cp", "cpk", "cpk_ci", "warnings"]].round(3).to_dict(orient="records"))
 ```
 
+Example output from the full fill-weight data:
+
 ```text
-[{'metric': 'diameter', 'group': 'Line A', 'n': 3, 'mean': 10.02, 'std': 0.01, 'cpk': 9.333},
- {'metric': 'diameter', 'group': 'Line B', 'n': 3, 'mean': 10.193, 'std': 0.015, 'cpk': 2.328},
- {'metric': 'diameter', 'group': 'Line C', 'n': 3, 'mean': 9.93, 'std': 0.01, 'cpk': 7.667},
- {'metric': 'roughness', 'group': 'Line A', 'n': 3, 'mean': 1.25, 'std': 0.05, 'cpk': 3.0},
- {'metric': 'roughness', 'group': 'Line B', 'n': 3, 'mean': 1.577, 'std': 0.025, 'cpk': 2.958},
- {'metric': 'roughness', 'group': 'Line C', 'n': 3, 'mean': 1.1, 'std': 0.02, 'cpk': 5.0}]
-[{'metric': 'diameter', 'group_a': 'Line A', 'group_b': 'Line B', 'adjusted_p_value': 5e-06, 'effect_size': -13.426342, 'method_family': 'tukey_hsd'},
- {'metric': 'diameter', 'group_a': 'Line A', 'group_b': 'Line C', 'adjusted_p_value': 0.000233, 'effect_size': 9.0, 'method_family': 'tukey_hsd'},
- {'metric': 'diameter', 'group_a': 'Line B', 'group_b': 'Line C', 'adjusted_p_value': 0.0, 'effect_size': 20.397712, 'method_family': 'tukey_hsd'},
- {'metric': 'roughness', 'group_a': 'Line A', 'group_b': 'Line B', 'adjusted_p_value': 5.9e-05, 'effect_size': -8.253089, 'method_family': 'tukey_hsd'},
- {'metric': 'roughness', 'group_a': 'Line A', 'group_b': 'Line C', 'adjusted_p_value': 0.004188, 'effect_size': 3.939193, 'method_family': 'tukey_hsd'},
- {'metric': 'roughness', 'group_a': 'Line B', 'group_b': 'Line C', 'adjusted_p_value': 7e-06, 'effect_size': 20.970537, 'method_family': 'tukey_hsd'}]
-[{'metric': 'diameter', 'group': 'Line A', 'cp': 10.0, 'cpk': 9.333, 'warnings': ['ci_unavailable_n_lt_25']},
- {'metric': 'diameter', 'group': 'Line B', 'cp': 6.547, 'cpk': 2.328, 'warnings': ['ci_unavailable_n_lt_25']},
- {'metric': 'diameter', 'group': 'Line C', 'cp': 10.0, 'cpk': 7.667, 'warnings': ['ci_unavailable_n_lt_25']},
- {'metric': 'roughness', 'group': 'Line A', 'cp': 3.333, 'cpk': 3.0, 'warnings': ['ci_unavailable_n_lt_25']},
- {'metric': 'roughness', 'group': 'Line B', 'cp': 6.623, 'cpk': 2.958, 'warnings': ['ci_unavailable_n_lt_25']},
- {'metric': 'roughness', 'group': 'Line C', 'cp': 8.333, 'cpk': 5.0, 'warnings': ['ci_unavailable_n_lt_25']}]
-[{'metric': 'diameter', 'group': 'Line A', 'skewness': 0.0, 'normality_status': 'skipped_n_lt_8', 'warnings': []},
- {'metric': 'diameter', 'group': 'Line B', 'skewness': 0.935, 'normality_status': 'skipped_n_lt_8', 'warnings': []},
- {'metric': 'diameter', 'group': 'Line C', 'skewness': 0.0, 'normality_status': 'skipped_n_lt_8', 'warnings': []},
- {'metric': 'roughness', 'group': 'Line A', 'skewness': 0.0, 'normality_status': 'skipped_n_lt_8', 'warnings': []},
- {'metric': 'roughness', 'group': 'Line B', 'skewness': -0.586, 'normality_status': 'skipped_n_lt_8', 'warnings': []},
- {'metric': 'roughness', 'group': 'Line C', 'skewness': 0.0, 'normality_status': 'skipped_n_lt_8', 'warnings': []}]
-[{'metric': 'diameter', 'group_a': 'Line A', 'group_b': 'Line B', 'method_name': 'Tukey HSD', 'adjusted_p_value': 5e-06},
- {'metric': 'diameter', 'group_a': 'Line A', 'group_b': 'Line C', 'method_name': 'Tukey HSD', 'adjusted_p_value': 0.000233},
- {'metric': 'diameter', 'group_a': 'Line B', 'group_b': 'Line C', 'method_name': 'Tukey HSD', 'adjusted_p_value': 0.0},
- {'metric': 'roughness', 'group_a': 'Line A', 'group_b': 'Line B', 'method_name': 'Tukey HSD', 'adjusted_p_value': 5.9e-05},
- {'metric': 'roughness', 'group_a': 'Line A', 'group_b': 'Line C', 'method_name': 'Tukey HSD', 'adjusted_p_value': 0.004188},
- {'metric': 'roughness', 'group_a': 'Line B', 'group_b': 'Line C', 'method_name': 'Tukey HSD', 'adjusted_p_value': 7e-06}]
+[{'metric': 'fill_weight_g', 'group': 'Line A', 'n': 30, 'mean': 100.01, 'std': 0.076, 'cpk': 6.498},
+ {'metric': 'fill_weight_g', 'group': 'Line B', 'n': 30, 'mean': 101.086, 'std': 0.082, 'cpk': 1.689},
+ {'metric': 'fill_weight_g', 'group': 'Line C', 'n': 30, 'mean': 99.974, 'std': 0.36, 'cpk': 1.367}]
+[{'metric': 'fill_weight_g', 'group_a': 'Line A', 'group_b': 'Line B', 'method_name': 'Games-Howell', 'adjusted_p_value': 0.0, 'effect_size': -13.604967},
+ {'metric': 'fill_weight_g', 'group_a': 'Line A', 'group_b': 'Line C', 'method_name': 'Games-Howell', 'adjusted_p_value': 0.859025, 'effect_size': 0.135921},
+ {'metric': 'fill_weight_g', 'group_a': 'Line B', 'group_b': 'Line C', 'method_name': 'Games-Howell', 'adjusted_p_value': 0.0, 'effect_size': 4.263341}]
+[{'metric': 'fill_weight_g', 'group': 'Line A', 'cp': 6.54, 'cpk': 6.498, 'cpk_ci': (4.821462671744837, 8.174563407109503), 'warnings': ['ci_approximate_n_lt_100']},
+ {'metric': 'fill_weight_g', 'group': 'Line B', 'cp': 6.121, 'cpk': 1.689, 'cpk_ci': (1.2385071173933808, 2.1401580414345562), 'warnings': ['ci_approximate_n_lt_100']},
+ {'metric': 'fill_weight_g', 'group': 'Line C', 'cp': 1.39, 'cpk': 1.367, 'cpk_ci': (0.9952687824617008, 1.7380573786844276), 'warnings': ['ci_approximate_n_lt_100']}]
 ```
 
 If you want plain dict rows instead of pandas objects, use:
@@ -301,41 +342,6 @@ print(
 ```
 
 This resamples each group with replacement, reruns the analysis, and reports how stable the omnibus and pairwise decisions are across the simulated runs.
-
-## Minimal notebook / Colab usage
-
-```python
-# In a notebook or Colab cell:
-!pip install -e .[pandas]
-
-import pandas as pd
-from hexafe_groupstats import analyze_dataframe
-
-df = pd.DataFrame(
-    {
-        "metric": ["m1", "m1", "m1", "m1"],
-        "group": ["A", "A", "B", "B"],
-        "value": [1.0, 1.2, 1.4, 1.5],
-    }
-)
-
-results = analyze_dataframe(df)
-summary = {
-    "test": results[0].omnibus.test_name,
-    "p_value": round(results[0].omnibus.p_value, 4),
-    "comment": results[0].diagnostics.comment,
-}
-summary
-```
-
-```text
-{'test': 'Mann-Whitney U',
- 'p_value': 0.3333,
- 'comment': 'Analyzed: pairwise comparison and capability policy are enabled.'}
-```
-
-For hosted notebooks, use the same package source as your environment provides
-for installs, such as a wheel file or a git URL instead of a local editable path.
 
 ## Notes
 
