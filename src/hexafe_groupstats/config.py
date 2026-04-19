@@ -22,6 +22,8 @@ class AnalysisConfig:
     multi_group_effect: str = MultiGroupEffect.ETA_SQUARED.value
     distribution_diagnostics: bool = True
     capability_alpha: float = 0.05
+    capability_benchmark: float = 1.33
+    ordered_sequence_available: bool = False
     simulation_validation_iterations: int = 0
     simulation_random_seed: int = 42
     backend: str = BackendName.AUTO.value

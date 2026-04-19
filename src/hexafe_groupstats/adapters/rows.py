@@ -153,6 +153,17 @@ def metric_row(result: MetricAnalysisResult) -> dict[str, object]:
             "selected_test_counts": list(result.simulation_validation.selected_test_counts),
         },
         "warnings": list(result.warnings),
+        "structured_insights": [
+            {
+                "headline": row.headline,
+                "why": row.why,
+                "first_action": row.first_action,
+                "confidence_or_caution": list(row.confidence_or_caution),
+                "priority_score": row.priority_score,
+                "status_class": row.status_class,
+            }
+            for row in result.structured_insights
+        ],
         "insights": list(result.insights),
     }
 

@@ -11,7 +11,7 @@ from ..domain.result_models import AnalysisDiagnostics, MetricAnalysisResult
 from ..native.backends import resolve_backend
 from ..policy.analysis_policy import resolve_analysis_policy
 from ..policy.diagnostics import build_diagnostics
-from ..policy.insights import build_metric_insights
+from ..policy.insights import build_structured_metric_insights, flatten_metric_insights
 from ..policy.spec_comparability import resolve_spec_context
 from .assumptions import assess_assumptions
 from .capability import compute_capability_results
@@ -95,13 +95,21 @@ def analyze_groups(
         distribution_profiles=distribution_profiles,
         correction_method=config.correction_method,
     )
-    insights = build_metric_insights(
+    structured_insights = build_structured_metric_insights(
         metric_name=metric_name,
+        preprocessed=preprocessed,
         descriptive_stats=descriptive_stats,
         pairwise_results=pairwise_results,
+        omnibus=omnibus,
+        capability_results=capability_results,
+        distribution_profiles=distribution_profiles,
         policy=policy,
         diagnostics=diagnostics,
+        alpha=config.alpha,
+        capability_benchmark=config.capability_benchmark,
+        ordered_sequence_available=config.ordered_sequence_available,
     )
+    insights = flatten_metric_insights(structured_insights)
     simulation_validation = (
         run_simulation_validation(
             metric_name=metric_name,
@@ -160,6 +168,7 @@ def analyze_groups(
         capability_results=capability_results,
         distribution_profiles=distribution_profiles,
         simulation_validation=simulation_validation,
+        structured_insights=structured_insights,
         insights=insights,
         warnings=warnings,
     )

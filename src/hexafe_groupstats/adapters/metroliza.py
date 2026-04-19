@@ -77,6 +77,8 @@ def to_metroliza_rows(result: MetricAnalysisResult) -> dict[str, Any]:
         )
     return {
         "metric_row": metric_summary,
+        "structured_insights": metric_summary.get("structured_insights", []),
+        "insights": list(result.insights),
         "descriptive_rows": descriptive_rows(result),
         "pairwise_rows": output_pairwise,
         "posthoc_rows": posthoc_rows(result),
