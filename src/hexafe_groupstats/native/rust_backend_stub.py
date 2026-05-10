@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from numpy.typing import NDArray
-
 from .protocols import GroupStatsBackend
 
 
@@ -32,4 +30,3 @@ class RustBackendStub(GroupStatsBackend):
 
 
 __all__ = ["RustBackendStub"]
-

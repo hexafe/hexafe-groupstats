@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 from scipy.stats import norm
 
 from hexafe_groupstats import AnalysisConfig, SpecLimits, analyze_metric

@@ -260,7 +260,6 @@ def _difference_summary(
 ) -> _DifferenceSummary:
     best = _best_pair(pairwise_results)
     if best is not None:
-        p_value = best.adjusted_p_value
         magnitude = _effect_magnitude(best.effect_size, best.effect_type)
         pair = _pair_label(best)
         effect_text = f"{best.effect_type}={_format_number(best.effect_size)}" if best.effect_type else "effect unavailable"
@@ -299,7 +298,7 @@ def _difference_summary(
             )
         return _DifferenceSummary(
             headline="no actionable group difference",
-            why=f"No corrected pairwise comparison shows both statistical and practical evidence of a meaningful gap.",
+            why="No corrected pairwise comparison shows both statistical and practical evidence of a meaningful gap.",
             action="No immediate group-difference action; continue routine monitoring.",
             status_class="no_actionable_difference",
             priority_score=25.0,

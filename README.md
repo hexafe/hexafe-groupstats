@@ -22,6 +22,9 @@ Top-level exports:
 | `analyze_dataframe(...)` | Reads tidy pandas/CSV-style data and returns one result per metric. |
 | `classify_spec_status(...)` | Classifies whether supplied specs are valid, matching, or mismatched across records. |
 | `resolve_analysis_policy(...)` | Converts spec status into what analysis is allowed, such as pairwise and capability output. |
+| `format_correction_method(...)` | Formats a correction method key, such as `holm` or `bh`, for reports. |
+| `describe_correction_policy(...)` | Returns a short report-ready description of the correction policy. |
+| `describe_pairwise_strategy(...)` | Returns a report-ready label for the selected pairwise strategy. |
 | `SpecLimits` | Holds lower, nominal, and upper specs. |
 | `AnalysisConfig` | Configures statistical behavior, diagnostics, simulation, and backend selection. |
 | `MetricAnalysisResult` | Full typed result for one metric. |
@@ -90,13 +93,7 @@ The CSV should be tidy: one row per measurement, with columns for metric, group,
 | `MetricAnalysisResult` | Typed result object containing assumptions, selected tests, comparisons, capability, diagnostics, and insights. |
 | `MetricInsight` | Compact decision summary with `headline`, `why`, `first_action`, and caution tags. |
 
-Input expectations:
-
-- For grouped samples, pass a metric name and a mapping of group labels to measurement values; `compare_groups(...)` also accepts a custom `metric_name`.
-- For DataFrame/CSV-style data, configure `metric_column`, `group_column`, `value_column`, `lsl_column`, `nominal_column`, and `usl_column` when your column names differ from the defaults.
-- For Metroliza-shaped payloads, use `hexafe_groupstats.adapters.metroliza.analyze_metroliza_payload(...)`.
-- Blank and non-numeric values are dropped after numeric coercion; group-comparison output needs at least two usable non-empty groups.
-- Specs can be `SpecLimits(...)`, a dict with `lsl`/`nominal`/`usl` or `LSL`/`NOMINAL`/`USL`, a `(lsl, nominal, usl)` tuple/list, or DataFrame spec columns.
+`hexafe-groupstats` accepts already-grouped numeric samples through `analyze_metric(...)` / `compare_groups(...)`, or tidy DataFrame and CSV-style data through `analyze_dataframe(...)`; the grouped path needs a metric name plus a mapping of group labels to values, and the data-frame path needs metric, group, and value columns, with optional spec columns if your names differ from the defaults. Blank and non-numeric values are dropped during numeric coercion, and group-comparison output needs at least two usable non-empty groups. Spec limits are optional, but capability and centering results require valid lower, nominal, and upper specs supplied as `SpecLimits(...)`, a dict with `lsl`/`nominal`/`usl` or `LSL`/`NOMINAL`/`USL`, a `(lsl, nominal, usl)` tuple or list, or DataFrame spec columns. `AnalysisConfig` controls statistical behavior such as alpha, multiple-comparison correction, post-hoc selection, confidence intervals, diagnostics, simulation, and backend selection.
 
 ## How To Read Results
 

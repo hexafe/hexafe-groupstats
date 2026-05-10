@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- Documented public report-label helpers and tightened README input-format guidance.
+- Added Ruff to the development dependency set and CI test matrix.
+
+### Fixed
+
+- Cleaned minor Ruff findings in imports and insight text helpers.
+
 ## 0.1.0rc2
 
 ### Added

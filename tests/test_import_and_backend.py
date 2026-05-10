@@ -6,7 +6,13 @@ import sys
 
 import pytest
 
-from hexafe_groupstats import AnalysisConfig, compare_groups
+from hexafe_groupstats import (
+    AnalysisConfig,
+    compare_groups,
+    describe_correction_policy,
+    describe_pairwise_strategy,
+    format_correction_method,
+)
 from hexafe_groupstats.native.backends import BackendUnavailableError
 
 
@@ -23,6 +29,14 @@ def test_python_backend_explicitly_works():
 def test_rust_backend_is_controlled_failure():
     with pytest.raises(BackendUnavailableError):
         compare_groups({"A": [1, 2, 3], "B": [2, 3, 4]}, config=AnalysisConfig(backend="rust"))
+
+
+def test_public_policy_label_helpers_are_top_level_exports():
+    assert format_correction_method("holm_bonferroni") == "Holm"
+    assert describe_correction_policy("bh") == "Exploratory false-discovery-rate control (Benjamini-Hochberg/FDR)"
+    assert describe_pairwise_strategy(non_parametric=False, equal_var=False, correction_method="bh") == (
+        "pairwise Welch t-tests + Benjamini-Hochberg"
+    )
 
 
 def test_package_import_is_clean_and_does_not_eagerly_import_pandas():
