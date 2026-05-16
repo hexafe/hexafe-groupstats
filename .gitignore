@@ -4,6 +4,8 @@ __pycache__/
 .DS_Store
 .venv/
 .venv-*/
+.coverage*
 dist/
 build/
 *.egg-info/
+rust/target/

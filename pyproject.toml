@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hexafe-groupstats"
-version = "0.1.0rc1"
+version = "0.1.0rc3"
 description = "Standalone reusable group comparison and statistical analysis engine extracted from Metroliza concepts."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,9 +29,19 @@ pandas = [
 ]
 dev = [
   "build>=1.2",
+  "coverage>=7.0",
   "pytest>=8.0",
   "pandas>=1.5",
+  "ruff>=0.8",
 ]
+
+[tool.coverage.run]
+branch = true
+source = ["hexafe_groupstats"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
 
 [tool.setuptools]
 package-dir = {"" = "src"}

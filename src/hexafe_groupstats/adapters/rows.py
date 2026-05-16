@@ -151,6 +151,16 @@ def metric_row(result: MetricAnalysisResult) -> dict[str, object]:
             "omnibus_significant_rate": result.simulation_validation.omnibus_significant_rate,
             "method_consistency_rate": result.simulation_validation.method_consistency_rate,
             "selected_test_counts": list(result.simulation_validation.selected_test_counts),
+            "pairwise_stability": [
+                {
+                    "group_a": row.group_a,
+                    "group_b": row.group_b,
+                    "significant_rate": row.significant_rate,
+                    "median_adjusted_p_value": row.median_adjusted_p_value,
+                }
+                for row in result.simulation_validation.pairwise_stability
+            ],
+            "warnings": list(result.simulation_validation.warnings),
         },
         "warnings": list(result.warnings),
         "structured_insights": [

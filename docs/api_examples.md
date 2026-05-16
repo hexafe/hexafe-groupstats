@@ -2,6 +2,47 @@
 
 This file shows the current public API and the adapter surface.
 
+## Method Reference
+
+| Method name | When we should use it | Why we should use it | Example use case |
+| --- | --- | --- | --- |
+| `analyze_metric(...)` | Values are already grouped in Python for one metric. | Returns the full typed result for assumptions, tests, comparisons, capability, diagnostics, and insights. | Compare fill weight across packaging lines. |
+| `compare_groups(...)` | A short grouped-sample comparison is enough. | Wraps `analyze_metric(...)` with a simpler call shape. | Compare two supplier batches from lists. |
+| `analyze_dataframe(...)` | Input is tidy pandas or CSV-style data. | Groups by metric and group, coerces numeric values, and reads optional specs. | Analyze a CSV with metric, line, value, and spec columns. |
+| `classify_spec_status(...)` | You need to inspect spec compatibility before or after analysis. | Distinguishes no specs, exact specs, mismatched specs, and invalid specs. | Detect that capability should be disabled. |
+| `resolve_analysis_policy(...)` | UI or report code needs allowed-output rules. | Converts spec status into pairwise/capability policy. | Show “Pairwise yes; capability off.” |
+| `format_correction_method(...)` | A correction key needs a report label. | Keeps labels consistent. | Render `holm` as `Holm`. |
+| `describe_correction_policy(...)` | Users need to understand the correction choice. | Explains strict family-wise control versus FDR control. | Add a footnote for adjusted p-values. |
+| `describe_pairwise_strategy(...)` | Reports need the selected pairwise strategy. | Combines pairwise test family and correction method. | Show `pairwise Welch t-tests + Holm`. |
+| `metric_row(...)` | One result needs a summary dict. | Flattens metric metadata, diagnostics, insight, warnings, and simulation summary. | Build a dashboard metric row. |
+| `descriptive_rows(...)` | Per-group summaries are needed. | Exposes n, mean, spread, quartiles, min/max, warnings, and capability values. | Create a descriptive report section. |
+| `pairwise_rows(...)` | Pairwise comparison rows are needed. | Exposes p-values, adjusted p-values, effect sizes, estimates, and warnings. | Export pair differences to CSV. |
+| `posthoc_rows(...)` | Dedicated multi-group post-hoc rows are needed. | Preserves Tukey, Games-Howell, or Dunn method details. | Show line-pair differences after Welch ANOVA. |
+| `capability_rows(...)` | Capability output is needed for valid specs. | Exposes Cp/Cpk, component indexes, confidence intervals, and warnings. | Rank groups by weakest Cpk. |
+| `distribution_rows(...)` | Distribution diagnostics are needed. | Exposes skewness, kurtosis, normality status, and warnings. | Flag high-skew groups in a report. |
+| `results_to_metric_dataframe(...)` | Pandas consumers need one row per metric. | Converts result-level summaries into a DataFrame. | Create a metric summary table in a notebook. |
+| `results_to_descriptive_dataframe(...)` | Pandas consumers need per-group summaries. | Converts descriptive rows into a DataFrame. | Sort groups by mean or Cpk. |
+| `results_to_pairwise_dataframe(...)` | Pandas consumers need pairwise rows. | Converts comparison rows into a DataFrame. | Filter significant adjusted p-values. |
+| `results_to_posthoc_dataframe(...)` | Pandas consumers need post-hoc rows. | Keeps multi-group post-hoc output tabular. | Review Dunn comparisons after Kruskal-Wallis. |
+| `results_to_capability_dataframe(...)` | Pandas consumers need capability rows. | Converts capability results into a DataFrame. | Export Cp/Cpk to a workbook. |
+| `results_to_distribution_dataframe(...)` | Pandas consumers need distribution diagnostics. | Converts distribution profiles into a DataFrame. | Audit rejected normality checks. |
+| Student t-test | Two normal groups have similar variance. | Tests a mean difference under equal-variance assumptions. | Compare two balanced machine samples. |
+| Welch t-test | Two normal groups have different variance. | Tests a mean difference without equal-variance assumptions. | Compare a stable sensor to a noisy sensor. |
+| Mann-Whitney U | Two-group normality is failed or unresolved. | Provides a non-parametric comparison. | Compare skewed cycle-time groups. |
+| ANOVA | Three or more normal groups have similar variance. | Tests whether any group mean differs. | Compare four material suppliers. |
+| Welch ANOVA | Three or more normal groups have unequal variance. | Tests overall differences without equal-variance assumptions. | Compare lines with different spread. |
+| Kruskal-Wallis | Three or more groups have failed or unresolved normality. | Provides a non-parametric overall test. | Compare skewed wait times across shifts. |
+| Tukey HSD / Tukey-Kramer | ANOVA selects the equal-variance path. | Finds pair differences after a multi-group parametric test. | Identify which batches differ after ANOVA. |
+| Games-Howell | Welch ANOVA selects the unequal-variance path. | Finds pair differences without assuming equal variance. | Compare line pairs with unequal spread. |
+| Dunn | Kruskal-Wallis selects the non-parametric path. | Finds rank-based pair differences with correction. | Locate which skewed groups differ. |
+| Holm correction | Decisions need strict multiple-comparison control. | Controls family-wise error. | Production action where false positives are costly. |
+| Benjamini-Hochberg correction | Exploratory screening has many comparisons. | Controls false discovery rate with less conservatism than Holm. | Scan many metrics for follow-up. |
+| Cp/Cpk capability | Valid lower, nominal, and upper specs are supplied. | Connects statistics to tolerance and centering risk. | Decide whether a shifted line is still capable. |
+| Distribution diagnostics | Assumption and shape context matters. | Adds skew, kurtosis, normality status, and caution flags. | Qualify normal-theory conclusions. |
+| Monte Carlo validation | Result stability is uncertain. | Resamples data and shows how often conclusions repeat. | Check a borderline pairwise result. |
+| `backend="auto"` / `backend="python"` | Normal installs, notebooks, and CI. | Uses the always-available Python correctness baseline. | Run in Colab without native dependencies. |
+| `backend="rust"` | Optional native extension is built and explicitly requested. | Runs native parametric pairwise kernels while preserving Python fallbacks for unsupported paths. | Compare many normal two-group pairs after `cargo build --release --manifest-path rust/Cargo.toml`. |
+
 ## `analyze_metric`
 
 ```python
@@ -117,6 +158,7 @@ For pandas output:
 
 ```python
 from hexafe_groupstats.adapters.pandas import (
+    results_to_metric_dataframe,
     results_to_capability_dataframe,
     results_to_descriptive_dataframe,
     results_to_distribution_dataframe,
@@ -124,6 +166,7 @@ from hexafe_groupstats.adapters.pandas import (
     results_to_posthoc_dataframe,
 )
 
+metric_df = results_to_metric_dataframe(results)
 capability_df = results_to_capability_dataframe(results)
 descriptive_df = results_to_descriptive_dataframe(results)
 distribution_df = results_to_distribution_dataframe(results)
@@ -169,6 +212,7 @@ policy = resolve_analysis_policy(status)
 
 The current rule semantics are:
 
+- `NO_SPEC` -> pairwise yes, capability no
 - `EXACT_MATCH` -> pairwise yes, capability yes
 - `LIMIT_MISMATCH` -> pairwise yes, capability no
 - `NOM_MISMATCH` -> pairwise no, capability no

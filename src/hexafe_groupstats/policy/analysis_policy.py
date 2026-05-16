@@ -9,6 +9,14 @@ from ..domain.models import AnalysisPolicy
 def resolve_analysis_policy(spec_status: SpecStatus | str) -> AnalysisPolicy:
     normalized = SpecStatus(str(spec_status).strip().upper())
     policy_by_status = {
+        SpecStatus.NO_SPEC: AnalysisPolicy(
+            spec_status=SpecStatus.NO_SPEC,
+            include_metric=True,
+            allow_pairwise=True,
+            allow_capability=False,
+            summary="No specification limits were supplied; pairwise comparison is allowed, capability metrics are disabled.",
+            analysis_restriction_label="Pairwise yes; capability off",
+        ),
         SpecStatus.EXACT_MATCH: AnalysisPolicy(
             spec_status=SpecStatus.EXACT_MATCH,
             include_metric=True,
@@ -46,4 +54,3 @@ def resolve_analysis_policy(spec_status: SpecStatus | str) -> AnalysisPolicy:
 
 
 __all__ = ["resolve_analysis_policy"]
-

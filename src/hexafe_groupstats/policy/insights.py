@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..domain.enums import SpecStatus
 from ..domain.models import AnalysisPolicy
 from ..domain.result_models import (
     AnalysisDiagnostics,
@@ -98,6 +99,16 @@ def _capability_summary(
     capability_results: tuple[CapabilityResult, ...],
     benchmark: float,
 ) -> _CapabilitySummary:
+    if policy.spec_status == SpecStatus.NO_SPEC:
+        return _CapabilitySummary(
+            headline="capability not evaluated",
+            why="No specification limits were supplied, so capability metrics are not computed.",
+            action="Supply lower, nominal, and upper specs when capability or centering decisions are needed.",
+            status_class="capability_unavailable",
+            priority_score=35.0,
+            cautions=("no_specs",),
+        )
+
     if not policy.allow_capability:
         return _CapabilitySummary(
             headline="capability unavailable",
@@ -260,7 +271,6 @@ def _difference_summary(
 ) -> _DifferenceSummary:
     best = _best_pair(pairwise_results)
     if best is not None:
-        p_value = best.adjusted_p_value
         magnitude = _effect_magnitude(best.effect_size, best.effect_type)
         pair = _pair_label(best)
         effect_text = f"{best.effect_type}={_format_number(best.effect_size)}" if best.effect_type else "effect unavailable"
@@ -299,7 +309,7 @@ def _difference_summary(
             )
         return _DifferenceSummary(
             headline="no actionable group difference",
-            why=f"No corrected pairwise comparison shows both statistical and practical evidence of a meaningful gap.",
+            why="No corrected pairwise comparison shows both statistical and practical evidence of a meaningful gap.",
             action="No immediate group-difference action; continue routine monitoring.",
             status_class="no_actionable_difference",
             priority_score=25.0,
@@ -357,7 +367,9 @@ def _base_cautions(
         cautions.append("imbalanced_groups")
     if "SEVERELY IMBALANCED N" in flags:
         cautions.append("severely_imbalanced_groups")
-    if policy.spec_status.value != "EXACT_MATCH":
+    if policy.spec_status == SpecStatus.NO_SPEC:
+        cautions.append("no_specs")
+    elif policy.spec_status != SpecStatus.EXACT_MATCH:
         cautions.append("spec_mismatch")
     unreliable_distribution_flags = {
         "high_skew",

@@ -186,7 +186,8 @@ def _run_games_howell_fallback(
     backend: GroupStatsBackend,
     config: AnalysisConfig,
 ) -> PostHocSummary:
-    pairs = [(labels[left], labels[right]) for left, right in combinations(range(len(labels)), 2)]
+    pair_indices = list(combinations(range(len(labels)), 2))
+    pairs = [(labels[left], labels[right]) for left, right in pair_indices]
     effect_cis = _pairwise_effect_ci_lookup(
         backend=backend,
         family="games_howell",
@@ -196,7 +197,7 @@ def _run_games_howell_fallback(
         config=config,
     )
     rows = []
-    for left_index, right_index in combinations(range(len(labels)), 2):
+    for left_index, right_index in pair_indices:
         group_a = labels[left_index]
         group_b = labels[right_index]
         rows.append(
@@ -264,7 +265,8 @@ def _run_tukey_family(
         if family == "games_howell"
         else ("Tukey HSD" if family == "tukey_hsd" else "Tukey-Kramer")
     )
-    pairs = [(labels[left], labels[right]) for left, right in combinations(range(len(labels)), 2)]
+    pair_indices = list(combinations(range(len(labels)), 2))
+    pairs = [(labels[left], labels[right]) for left, right in pair_indices]
     effect_cis = _pairwise_effect_ci_lookup(
         backend=backend,
         family=family,
@@ -275,7 +277,7 @@ def _run_tukey_family(
     )
 
     rows: list[PostHocComparisonResult] = []
-    for left, right in combinations(range(len(labels)), 2):
+    for left, right in pair_indices:
         group_a = labels[left]
         group_b = labels[right]
         statistic = float(result.statistic[left, right])
@@ -350,7 +352,9 @@ def _run_dunn_family(
     values = np.concatenate(groups)
     ranks = rankdata(values, method="average")
     tie_factor = float(tiecorrect(ranks))
-    pairs = [(labels[left], labels[right]) for left, right in combinations(range(len(labels)), 2)]
+    pair_indices = list(combinations(range(len(labels)), 2))
+    pairs = [(labels[left], labels[right]) for left, right in pair_indices]
+    label_to_index = {label: index for index, label in enumerate(labels)}
     effect_cis = _pairwise_effect_ci_lookup(
         backend=backend,
         family="dunn",
@@ -368,7 +372,7 @@ def _run_dunn_family(
         ranked_groups.append(ranks[offset: offset + group.size])
         offset += group.size
 
-    for left, right in combinations(range(len(labels)), 2):
+    for left, right in pair_indices:
         statistic = _dunn_statistic(
             ranked_groups[left],
             ranked_groups[right],
@@ -390,8 +394,8 @@ def _run_dunn_family(
     adjusted = adjust_pvalues(raw_p_values, config.correction_method)
     rows: list[PostHocComparisonResult] = []
     for (group_a, group_b, statistic, raw_p, mean_rank_diff), adjusted_p in zip(raw_rows, adjusted):
-        left = labels.index(group_a)
-        right = labels.index(group_b)
+        left = label_to_index[group_a]
+        right = label_to_index[group_b]
         rows.append(
             PostHocComparisonResult(
                 metric=metric_name,

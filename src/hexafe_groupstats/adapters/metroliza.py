@@ -9,7 +9,7 @@ from ..config import AnalysisConfig
 from ..core.engine import analyze_groups
 from ..domain.models import SpecLimits
 from ..domain.result_models import MetricAnalysisResult
-from .rows import capability_rows, descriptive_rows, distribution_rows, metric_row, pairwise_rows, posthoc_rows
+from .rows import capability_rows, descriptive_rows, distribution_rows, metric_row, posthoc_rows
 
 
 def analyze_metroliza_payload(

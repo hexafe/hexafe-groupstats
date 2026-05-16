@@ -42,6 +42,7 @@ class MultiGroupEffect(StrValueEnum):
 
 
 class SpecStatus(StrValueEnum):
+    NO_SPEC = "NO_SPEC"
     EXACT_MATCH = "EXACT_MATCH"
     LIMIT_MISMATCH = "LIMIT_MISMATCH"
     NOM_MISMATCH = "NOM_MISMATCH"

@@ -1,0 +1,13 @@
+[package]
+name = "hexafe-groupstats-native"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "_hexafe_groupstats_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.28", features = ["extension-module"] }
+rand = "0.8"
+statrs = "0.17"
