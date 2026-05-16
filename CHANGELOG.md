@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+No unreleased changes.
+
+## 0.1.0rc3
+
 ### Changed
 
 - Documented public report-label helpers and tightened README input-format guidance.
