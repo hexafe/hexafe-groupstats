@@ -66,15 +66,15 @@ Performance-sensitive operations go through `native.protocols.GroupStatsBackend`
 The current package ships with:
 
 - `PythonBackend` as the always-available default
-- `RustBackendStub` as a placeholder for future acceleration
+- `RustBackend` as an optional source-checkout native backend when the Rust extension is built
 - `resolve_backend(...)` for internal backend selection and fallback control
 
 This keeps the public API backend-agnostic and avoids spreading backend branching through the statistical modules.
 
-## Future Rust acceleration
+## Rust acceleration
 
-Rust can be added behind the protocol layer without changing public function signatures or result models.
-The best candidates are the repeated numeric hotspots:
+Rust lives behind the protocol layer without changing public function signatures or result models.
+The current optional backend accelerates selected parametric pairwise work and deliberately falls back to Python for paths where conversion overhead or parity risk is higher. The best future candidates are still the repeated numeric hotspots:
 
 - numeric coercion and array normalization
 - batched pairwise comparisons

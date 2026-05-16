@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
-from ..config import AnalysisConfig
+from ..config import AnalysisConfig, validate_analysis_config
 from ..domain.result_models import MetricAnalysisResult
 from ..native.backends import resolve_backend
 from ..policy.analysis_policy import resolve_analysis_policy
@@ -31,6 +31,7 @@ def analyze_groups(
     config: AnalysisConfig | None = None,
 ) -> MetricAnalysisResult:
     config = config or AnalysisConfig()
+    validate_analysis_config(config)
     backend = resolve_backend(config.backend, enable_rust_in_auto=config.enable_rust_in_auto)
 
     normalized_groups = {str(label): values for label, values in groups.items()}
@@ -42,7 +43,6 @@ def analyze_groups(
     descriptive_stats = compute_descriptive_stats(preprocessed)
     canonical_spec_limits, spec_status = resolve_spec_context(
         spec_limits,
-        missing_means_exact_match=True,
     )
     policy = resolve_analysis_policy(spec_status)
     assumptions = assess_assumptions(
@@ -113,7 +113,7 @@ def analyze_groups(
     simulation_validation = (
         run_simulation_validation(
             metric_name=metric_name,
-            groups=normalized_groups,
+            groups={group.label: group.values for group in preprocessed},
             spec_limits=spec_limits,
             config=replace(
                 config,

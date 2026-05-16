@@ -21,6 +21,7 @@ LOW_N = "LOW N"
 IMBALANCED_N = "IMBALANCED N"
 SEVERELY_IMBALANCED_N = "SEVERELY IMBALANCED N"
 SPEC_QUESTION = "SPEC?"
+NO_SPEC = "NO SPEC"
 
 
 def _metric_flags(preprocessed: tuple[GroupPreprocessResult, ...], spec_status: SpecStatus) -> tuple[str, ...]:
@@ -32,7 +33,9 @@ def _metric_flags(preprocessed: tuple[GroupPreprocessResult, ...], spec_status: 
             flags.append(SEVERELY_IMBALANCED_N)
         elif ratio >= 2.0:
             flags.append(IMBALANCED_N)
-    if spec_status != SpecStatus.EXACT_MATCH:
+    if spec_status == SpecStatus.NO_SPEC:
+        flags.append(NO_SPEC)
+    elif spec_status != SpecStatus.EXACT_MATCH:
         flags.append(SPEC_QUESTION)
     return tuple(flags)
 
@@ -42,6 +45,8 @@ def build_diagnostics_comment(
     policy: AnalysisPolicy,
     pairwise_count: int,
 ) -> str:
+    if policy.spec_status == SpecStatus.NO_SPEC:
+        return "Analyzed without specs: pairwise comparison is enabled and capability metrics are disabled."
     if policy.spec_status == SpecStatus.LIMIT_MISMATCH:
         return "Analyzed with caution: limits differ across groups; pairwise comparison is enabled and capability is disabled."
     if policy.spec_status == SpecStatus.NOM_MISMATCH:
@@ -79,11 +84,14 @@ def build_diagnostics(
             }
         )
     )
-    capability_strategy = (
-        "Per-group normal-theory capability"
-        if capability_results
-        else ("Capability disabled by policy" if not policy.allow_capability else "Capability unavailable")
-    )
+    if capability_results:
+        capability_strategy = "Per-group normal-theory capability"
+    elif policy.spec_status == SpecStatus.NO_SPEC:
+        capability_strategy = "Capability disabled because no specs were supplied"
+    elif not policy.allow_capability:
+        capability_strategy = "Capability disabled by policy"
+    else:
+        capability_strategy = "Capability unavailable"
     posthoc_strategy = (
         describe_posthoc_strategy(
             family=posthoc_summary.family,

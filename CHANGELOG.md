@@ -6,10 +6,20 @@
 
 - Documented public report-label helpers and tightened README input-format guidance.
 - Added Ruff to the development dependency set and CI test matrix.
+- Separated no-spec analyses from invalid specs: pairwise/post-hoc output remains enabled without specs, while capability is explicitly disabled.
+- Added explicit method-reference documentation for public APIs, adapters, selected statistical methods, corrections, capability, diagnostics, validation, and backend selection.
+- Added a lightweight benchmark script for Python baseline and future native-backend acceptance checks.
+- Included docs and scripts in source distributions.
+- Added an optional PyO3 Rust backend scaffold and native parametric pairwise kernel, while keeping Python as the default backend.
+- Added Rust/native source files to source distributions and documented benchmark-first native usage.
 
 ### Fixed
 
 - Cleaned minor Ruff findings in imports and insight text helpers.
+- Added stricter `AnalysisConfig` and DataFrame input validation with clear errors for unsupported options, missing required columns, and partial spec-column sets.
+- Added metric-level pandas export rows and fuller simulation stability serialization.
+- Optimized Python numeric coercion, pairwise conversion, bootstrap CI, and Monte Carlo resampling paths.
+- Made pandas categorical grouping explicit to avoid future pandas warning noise and unobserved-category outputs.
 
 ## 0.1.0rc2
 

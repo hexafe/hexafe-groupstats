@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.stats import mannwhitneyu, rankdata, ttest_ind
+from scipy.stats import mannwhitneyu, rankdata, ttest_ind_from_stats
 
 from .protocols import GroupStatsBackend, PairwiseBackendRow
 
@@ -30,7 +30,14 @@ def _normalize_array(values: Any) -> NDArray[np.float64]:
             return np.ascontiguousarray(array, dtype=np.float64)
         iterable = values.reshape(-1)
     else:
-        iterable = values
+        try:
+            array = np.asarray(values, dtype=np.float64)
+        except (TypeError, ValueError):
+            iterable = values
+        else:
+            if array.ndim != 1:
+                array = array.reshape(-1)
+            return np.ascontiguousarray(array, dtype=np.float64)
     array = np.array([_coerce_scalar_to_float64_or_nan(value) for value in iterable], dtype=np.float64)
     return np.ascontiguousarray(array, dtype=np.float64)
 
@@ -48,6 +55,26 @@ def _cohen_d(sample_a: NDArray[np.float64], sample_b: NDArray[np.float64]) -> fl
     if pooled <= 0:
         return None
     return float((np.mean(sample_a) - np.mean(sample_b)) / np.sqrt(pooled))
+
+
+def _cohen_d_from_stats(
+    mean_a: float,
+    std_a: float,
+    n_a: int,
+    mean_b: float,
+    std_b: float,
+    n_b: int,
+) -> float | None:
+    if n_a < 2 or n_b < 2:
+        return None
+    pooled_num = ((n_a - 1) * (std_a**2)) + ((n_b - 1) * (std_b**2))
+    pooled_den = n_a + n_b - 2
+    if pooled_den <= 0:
+        return None
+    pooled = pooled_num / pooled_den
+    if pooled <= 0:
+        return None
+    return float((mean_a - mean_b) / np.sqrt(pooled))
 
 
 def _cliffs_delta(sample_a: NDArray[np.float64], sample_b: NDArray[np.float64]) -> float | None:
@@ -135,20 +162,75 @@ def _effect_from_kernel(effect_kernel: str, groups: list[NDArray[np.float64]]) -
     raise ValueError(f"Unsupported effect kernel: {effect_kernel}")
 
 
-def _pairwise_p_value(
+def _bootstrap_cohen_d_ci(
+    *,
+    groups: list[NDArray[np.float64]],
+    level: float,
+    iterations: int,
+    seed: int,
+) -> tuple[float, float] | None:
+    if len(groups) != 2:
+        return None
+    left, right = groups
+    if left.size < 2 or right.size < 2:
+        return None
+
+    rng = np.random.default_rng(seed)
+    resolved_iterations = max(1, int(iterations))
+    left_samples = left[rng.integers(0, left.size, size=(resolved_iterations, left.size))]
+    right_samples = right[rng.integers(0, right.size, size=(resolved_iterations, right.size))]
+    left_var = np.var(left_samples, axis=1, ddof=1)
+    right_var = np.var(right_samples, axis=1, ddof=1)
+    pooled_den = left.size + right.size - 2
+    if pooled_den <= 0:
+        return None
+    pooled = (((left.size - 1) * left_var) + ((right.size - 1) * right_var)) / pooled_den
+    valid = pooled > 0.0
+    if not np.any(valid):
+        return None
+    estimates = (np.mean(left_samples, axis=1) - np.mean(right_samples, axis=1)) / np.sqrt(pooled)
+    estimates = estimates[valid & np.isfinite(estimates)]
+    if estimates.size == 0:
+        return None
+    lower_q = ((1.0 - level) / 2.0) * 100.0
+    upper_q = (1.0 - (1.0 - level) / 2.0) * 100.0
+    return (
+        float(np.percentile(estimates, lower_q)),
+        float(np.percentile(estimates, upper_q)),
+    )
+
+
+def _pairwise_stats(
     sample_a: NDArray[np.float64],
     sample_b: NDArray[np.float64],
     *,
+    mean_a: float,
+    std_a: float,
+    mean_b: float,
+    std_b: float,
     non_parametric: bool,
     equal_var: bool,
-) -> tuple[str, float | None]:
+) -> tuple[str, float | None, float | None]:
     if sample_a.size < 2 or sample_b.size < 2:
-        return ("insufficient_n", None)
+        return ("insufficient_n", None, None)
     if non_parametric:
-        _, p_value = mannwhitneyu(sample_a, sample_b, alternative="two-sided")
-        return ("Mann-Whitney U", None if np.isnan(p_value) else float(p_value))
-    _, p_value = ttest_ind(sample_a, sample_b, equal_var=equal_var, nan_policy="omit")
-    return ("Student t-test" if equal_var else "Welch t-test", None if np.isnan(p_value) else float(p_value))
+        statistic, p_value = mannwhitneyu(sample_a, sample_b, alternative="two-sided")
+        effect_size = float((2.0 * statistic) / (sample_a.size * sample_b.size) - 1.0)
+        return ("Mann-Whitney U", None if np.isnan(p_value) else float(p_value), effect_size)
+    _, p_value = ttest_ind_from_stats(
+        mean1=mean_a,
+        std1=std_a,
+        nobs1=sample_a.size,
+        mean2=mean_b,
+        std2=std_b,
+        nobs2=sample_b.size,
+        equal_var=equal_var,
+    )
+    return (
+        "Student t-test" if equal_var else "Welch t-test",
+        None if np.isnan(p_value) else float(p_value),
+        _cohen_d_from_stats(mean_a, std_a, sample_a.size, mean_b, std_b, sample_b.size),
+    )
 
 
 class PythonBackend(GroupStatsBackend):
@@ -171,12 +253,18 @@ class PythonBackend(GroupStatsBackend):
     ) -> list[PairwiseBackendRow]:
         raw_rows: list[PairwiseBackendRow] = []
         raw_p_values: list[float | None] = []
+        means = [float(np.mean(group)) if group.size else np.nan for group in groups]
+        stds = [float(np.std(group, ddof=1)) if group.size > 1 else np.nan for group in groups]
         for left_index, right_index in combinations(range(len(labels)), 2):
             sample_a = groups[left_index]
             sample_b = groups[right_index]
-            test_name, p_value = _pairwise_p_value(
+            test_name, p_value, effect_size = _pairwise_stats(
                 sample_a,
                 sample_b,
+                mean_a=means[left_index],
+                std_a=stds[left_index],
+                mean_b=means[right_index],
+                std_b=stds[right_index],
                 non_parametric=non_parametric,
                 equal_var=equal_var,
             )
@@ -187,9 +275,7 @@ class PythonBackend(GroupStatsBackend):
                     group_b=labels[right_index],
                     test_name=test_name,
                     p_value=p_value,
-                    effect_size=_cliffs_delta(sample_a, sample_b)
-                    if non_parametric
-                    else _cohen_d(sample_a, sample_b),
+                    effect_size=effect_size,
                     adjusted_p_value=None,
                     significant=False,
                 )
@@ -217,6 +303,14 @@ class PythonBackend(GroupStatsBackend):
         iterations: int,
         seed: int,
     ) -> tuple[float, float] | None:
+        if effect_kernel == "cohen_d" and len(groups) == 2:
+            return _bootstrap_cohen_d_ci(
+                groups=groups,
+                level=level,
+                iterations=iterations,
+                seed=seed,
+            )
+
         rng = np.random.default_rng(seed)
         estimates: list[float] = []
         resolved_iterations = max(1, int(iterations))
@@ -265,4 +359,3 @@ class PythonBackend(GroupStatsBackend):
 
 
 __all__ = ["PythonBackend"]
-

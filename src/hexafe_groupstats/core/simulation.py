@@ -33,7 +33,7 @@ def run_simulation_validation(
     pair_significant_counts: dict[tuple[str, str], int] = defaultdict(int)
     pair_adjusted_values: dict[tuple[str, str], list[float]] = defaultdict(list)
 
-    normalized_groups = {str(label): np.asarray(values, dtype=object) for label, values in groups.items()}
+    normalized_groups = {str(label): np.asarray(values, dtype=np.float64) for label, values in groups.items()}
     for _ in range(iterations):
         sampled_groups = {}
         for label, values in normalized_groups.items():
@@ -41,7 +41,7 @@ def run_simulation_validation(
                 sampled_groups[label] = []
                 continue
             indices = rng.integers(0, values.size, values.size)
-            sampled_groups[label] = values[indices].tolist()
+            sampled_groups[label] = values[indices]
 
         result = analyze_groups(
             metric_name=metric_name,

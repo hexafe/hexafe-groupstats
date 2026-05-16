@@ -31,7 +31,7 @@ def _coerce_specs(specs: Any) -> list[SpecLimits]:
 def classify_spec_status(specs: Any) -> SpecStatus:
     normalized = _coerce_specs(specs)
     if not normalized:
-        return SpecStatus.INVALID_SPEC
+        return SpecStatus.NO_SPEC
     if any(not spec.is_valid() for spec in normalized):
         return SpecStatus.INVALID_SPEC
     nominals = {spec.nominal for spec in normalized}
@@ -46,11 +46,8 @@ def classify_spec_status(specs: Any) -> SpecStatus:
 def resolve_spec_context(specs: Any, *, missing_means_exact_match: bool = False) -> tuple[SpecLimits, SpecStatus]:
     normalized = _coerce_specs(specs)
     if not normalized:
-        if missing_means_exact_match:
-            return SpecLimits(), SpecStatus.EXACT_MATCH
-        return SpecLimits(), SpecStatus.INVALID_SPEC
+        return SpecLimits(), SpecStatus.NO_SPEC
     return normalized[0], classify_spec_status(normalized)
 
 
 __all__ = ["classify_spec_status", "resolve_spec_context"]
-

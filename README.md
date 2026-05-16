@@ -93,7 +93,7 @@ The CSV should be tidy: one row per measurement, with columns for metric, group,
 | `MetricAnalysisResult` | Typed result object containing assumptions, selected tests, comparisons, capability, diagnostics, and insights. |
 | `MetricInsight` | Compact decision summary with `headline`, `why`, `first_action`, and caution tags. |
 
-`hexafe-groupstats` accepts already-grouped numeric samples through `analyze_metric(...)` / `compare_groups(...)`, or tidy DataFrame and CSV-style data through `analyze_dataframe(...)`; the grouped path needs a metric name plus a mapping of group labels to values, and the data-frame path needs metric, group, and value columns, with optional spec columns if your names differ from the defaults. Blank and non-numeric values are dropped during numeric coercion, and group-comparison output needs at least two usable non-empty groups. Spec limits are optional, but capability and centering results require valid lower, nominal, and upper specs supplied as `SpecLimits(...)`, a dict with `lsl`/`nominal`/`usl` or `LSL`/`NOMINAL`/`USL`, a `(lsl, nominal, usl)` tuple or list, or DataFrame spec columns. `AnalysisConfig` controls statistical behavior such as alpha, multiple-comparison correction, post-hoc selection, confidence intervals, diagnostics, simulation, and backend selection.
+`hexafe-groupstats` accepts already-grouped numeric samples through `analyze_metric(...)` / `compare_groups(...)`, or tidy DataFrame and CSV-style data through `analyze_dataframe(...)`; the grouped path needs a metric name plus a mapping of group labels to values, and the data-frame path needs metric, group, and value columns, with optional spec columns if your names differ from the defaults. Blank and non-numeric values are dropped during numeric coercion, and group-comparison output needs at least two usable non-empty groups. Spec limits are optional: when no specs are supplied, pairwise and post-hoc comparisons remain enabled and capability is disabled; capability and centering results require valid lower, nominal, and upper specs supplied as `SpecLimits(...)`, a dict with `lsl`/`nominal`/`usl` or `LSL`/`NOMINAL`/`USL`, a `(lsl, nominal, usl)` tuple or list, or a complete DataFrame spec-column set. `AnalysisConfig` controls statistical behavior such as alpha, multiple-comparison correction, post-hoc selection, confidence intervals, diagnostics, simulation, and backend selection.
 
 ## How To Read Results
 
@@ -111,6 +111,49 @@ The CSV should be tidy: one row per measurement, with columns for metric, group,
 | Structured insight | A short decision summary with `headline`, `why`, `first_action`, and caution tags. |
 
 The usual reading order is: check the structured insight, inspect the selected omnibus and post-hoc methods, review adjusted pairwise p-values and effect sizes, then use Cpk and Cpk confidence intervals to decide whether a statistically different group also needs process action.
+
+## Method Reference
+
+This table covers the public API and the statistical methods users will see in results. Private helper functions are intentionally excluded.
+
+| Method name | When we should use it | Why we should use it | Example use case |
+| --- | --- | --- | --- |
+| `analyze_metric(...)` | Use when values are already grouped in Python for one metric. | It returns the full typed result with assumptions, tests, post-hoc rows, capability, diagnostics, and insights. | Compare fill-weight samples from three packaging lines. |
+| `compare_groups(...)` | Use for the simplest grouped-sample comparison. | It is a concise wrapper around `analyze_metric(...)` when the metric name can be supplied as an option. | Compare two supplier batches from lists in a notebook. |
+| `analyze_dataframe(...)` | Use for tidy pandas or CSV-style data. | It groups rows by metric and group, coerces numeric values, reads optional specs, and returns one result per metric. | Analyze a CSV with `metric`, `line`, `value`, `LSL`, `NOMINAL`, and `USL` columns. |
+| `classify_spec_status(...)` | Use before analysis when you need to know whether specs are absent, aligned, mismatched, or invalid. | It explains whether pairwise and capability interpretations are safe. | Detect that two groups use different nominal targets before comparing them directly. |
+| `resolve_analysis_policy(...)` | Use when report or UI code needs the policy implied by a spec status. | It converts spec status into allowed output: pairwise yes/no and capability yes/no. | Show “Pairwise yes; capability off” for a limit mismatch. |
+| `format_correction_method(...)` | Use when rendering a correction key for users. | It keeps report labels consistent. | Render `bh` as `Benjamini-Hochberg`. |
+| `describe_correction_policy(...)` | Use when reports need a short explanation of the p-value correction. | It tells users whether the correction is strict or exploratory. | Explain why Holm was used for production decision control. |
+| `describe_pairwise_strategy(...)` | Use when reports need the selected pairwise strategy label. | It combines the test family and correction method into one readable label. | Show `pairwise Welch t-tests + Holm`. |
+| `metric_row(...)` | Use when one typed result needs a single summary dict. | It flattens the main result, diagnostics, insights, warnings, and simulation summary. | Build a JSON payload for a dashboard metric card. |
+| `descriptive_rows(...)` | Use when you need per-group descriptive output. | It exposes n, mean, spread, quartiles, min/max, warnings, and capability values when available. | Export group summary rows to a report table. |
+| `pairwise_rows(...)` | Use when you need legacy pairwise-compatible comparison rows. | It preserves group pairs, test names, adjusted p-values, effect sizes, estimates, and warnings. | Feed pairwise rows into an existing export workflow. |
+| `posthoc_rows(...)` | Use when you need dedicated multi-group post-hoc results. | It reports Tukey, Games-Howell, or Dunn rows with method family and comparison estimates. | List which line pairs differ after Welch ANOVA. |
+| `capability_rows(...)` | Use when specs are valid and per-group capability should be exported. | It exposes Cp, Cpk, component indexes, confidence intervals, and capability warnings. | Rank process lines by weakest Cpk lower bound. |
+| `distribution_rows(...)` | Use when diagnostic distribution output should be exported. | It exposes skewness, kurtosis, normality test status, and distribution warnings. | Flag metrics where normal-theory conclusions need caution. |
+| `results_to_metric_dataframe(...)` | Use when pandas consumers need one summary row per metric. | It turns result-level metadata into a DataFrame without hand-flattening typed objects. | Create a metric summary tab in a notebook. |
+| `results_to_descriptive_dataframe(...)` | Use when pandas consumers need per-group summary rows. | It converts `descriptive_rows(...)` into a DataFrame. | Build a sortable table of means and Cpk values. |
+| `results_to_pairwise_dataframe(...)` | Use when pandas consumers need pairwise comparison rows. | It converts pairwise output into report-ready tabular data. | Filter significant adjusted p-values in a notebook. |
+| `results_to_posthoc_dataframe(...)` | Use when pandas consumers need dedicated post-hoc rows. | It keeps multi-group method details separate from simple two-group comparisons. | Review Dunn comparisons after Kruskal-Wallis. |
+| `results_to_capability_dataframe(...)` | Use when pandas consumers need capability rows. | It converts capability output into a DataFrame with confidence intervals and warnings. | Export Cp/Cpk rows for process capability review. |
+| `results_to_distribution_dataframe(...)` | Use when pandas consumers need distribution diagnostics. | It converts diagnostic profiles into a DataFrame. | Audit which groups have high skew or rejected normality. |
+| Student t-test | Use automatically for two groups when normality and equal variance assumptions pass. | It is the standard parametric test for two independent groups with similar variance. | Compare two machines with balanced, normal, similar-spread samples. |
+| Welch t-test | Use automatically for two groups when normality passes but variance differs. | It avoids assuming equal group variance. | Compare two sensors where one group is much noisier. |
+| Mann-Whitney U | Use automatically for two groups when normality is failed or unresolved. | It gives a non-parametric two-group comparison. | Compare two skewed cycle-time distributions. |
+| ANOVA | Use automatically for three or more groups when normality and equal variance assumptions pass. | It tests whether any group mean differs before post-hoc comparisons. | Compare average strength across four materials. |
+| Welch ANOVA | Use automatically for three or more groups when normality passes but variance differs. | It handles unequal variance better than standard ANOVA. | Compare production lines with different spread. |
+| Kruskal-Wallis | Use automatically for three or more groups when normality is failed or unresolved. | It provides a non-parametric overall multi-group test. | Compare skewed wait-time data across shifts. |
+| Tukey HSD / Tukey-Kramer | Use after ANOVA on the equal-variance parametric path. | It performs corrected pairwise mean comparisons for multiple groups. | Find which batches differ after a significant ANOVA. |
+| Games-Howell | Use after Welch ANOVA on the unequal-variance parametric path. | It compares pairs without assuming equal variance. | Find which line pairs differ when spreads are not equal. |
+| Dunn | Use after Kruskal-Wallis on the non-parametric multi-group path. | It gives rank-based pairwise comparisons with p-value correction. | Identify which skewed groups differ after Kruskal-Wallis. |
+| Holm correction | Use for stricter decision control across multiple pair comparisons. | It controls family-wise error more conservatively than false-discovery methods. | Production action where false positives are costly. |
+| Benjamini-Hochberg correction | Use for exploratory analysis with many comparisons. | It controls false discovery rate and is less conservative than Holm. | Screening many process metrics for follow-up. |
+| Cp/Cpk capability | Use only with valid lower, nominal, and upper specs. | It connects statistical differences to tolerance and centering risk. | Decide whether a shifted line is still capable against customer specs. |
+| Distribution diagnostics | Use when assumption and shape context matters. | It reports skew, kurtosis, normality status, and warnings that qualify interpretation. | Add caution tags for heavily skewed data. |
+| Monte Carlo validation | Use when you need robustness checks for small, close, or fragile results. | It resamples data and reports how often conclusions repeat. | Check whether a borderline pairwise result is stable. |
+| `backend="auto"` / `backend="python"` | Use for normal installs, notebooks, CI, and release builds. | The Python backend is always available and is the correctness baseline. | Run groupstats in Colab without native dependencies. |
+| `backend="rust"` | Use when the optional Rust extension is built and explicitly requested. | It runs native parametric pairwise kernels while preserving Python fallbacks for unsupported paths. | Compare many normal two-group pairs after `cargo build --release --manifest-path rust/Cargo.toml`. |
 
 ## Real-Life Example: Packaging Fill Weight
 
@@ -293,15 +336,18 @@ Use these helpers when the typed result object needs to become report, dashboard
 
 ```python
 from hexafe_groupstats.adapters.pandas import (
+    results_to_metric_dataframe,
     results_to_capability_dataframe,
     results_to_descriptive_dataframe,
     results_to_posthoc_dataframe,
 )
 
+metric_df = results_to_metric_dataframe(results)
 descriptive_df = results_to_descriptive_dataframe(results)
 posthoc_df = results_to_posthoc_dataframe(results)
 capability_df = results_to_capability_dataframe(results)
 
+print(metric_df[["metric", "spec_status", "omnibus_test_name", "posthoc_method_name"]].to_dict(orient="records"))
 print(descriptive_df[["metric", "group", "n", "mean", "std", "cpk"]].round(3).to_dict(orient="records"))
 print(posthoc_df[["metric", "group_a", "group_b", "method_name", "adjusted_p_value", "effect_size"]].round(6).to_dict(orient="records"))
 print(capability_df[["metric", "group", "cp", "cpk", "cpk_ci", "warnings"]].round(3).to_dict(orient="records"))
@@ -310,6 +356,7 @@ print(capability_df[["metric", "group", "cp", "cpk", "cpk_ci", "warnings"]].roun
 Example output from the full fill-weight data:
 
 ```text
+[{'metric': 'fill_weight_g', 'spec_status': 'EXACT_MATCH', 'omnibus_test_name': 'Welch ANOVA', 'posthoc_method_name': 'Games-Howell'}]
 [{'metric': 'fill_weight_g', 'group': 'Line A', 'n': 30, 'mean': 100.01, 'std': 0.076, 'cpk': 6.498},
  {'metric': 'fill_weight_g', 'group': 'Line B', 'n': 30, 'mean': 101.086, 'std': 0.082, 'cpk': 1.689},
  {'metric': 'fill_weight_g', 'group': 'Line C', 'n': 30, 'mean': 99.974, 'std': 0.36, 'cpk': 1.367}]
@@ -407,12 +454,26 @@ How to read this output:
 
 Use `significant_rate` to judge decision stability and `median_p_adj` to judge typical corrected evidence. In the example, `sensor_B vs sensor_C` is stable across all resamples, while the other two pairs are much less stable even though the overall test is always significant.
 
+## Performance Benchmarking
+
+The Python backend is the correctness baseline. Use the lightweight benchmark script before changing statistical kernels or enabling native acceleration:
+
+```bash
+python scripts/benchmark_groupstats.py --repeat 5
+python scripts/benchmark_groupstats.py --profile standard --repeat 5
+python scripts/benchmark_groupstats.py --backend rust --repeat 5
+```
+
+The quick profile is intended for smoke checks. The standard profile is slower and is the better baseline before optimizing pairwise, post-hoc, bootstrap, DataFrame batch, or Monte Carlo paths.
+
 ## Notes
 
 Backend behavior:
 
-- `backend="auto"` currently resolves to the Python backend.
-- `backend="rust"` is intentionally not available in v1 and fails in a controlled way.
+- `backend="auto"` resolves to the Python backend by default.
+- `backend="rust"` uses the optional native extension when it has been built locally.
+- `AnalysisConfig(backend="auto", enable_rust_in_auto=True)` may use Rust when the extension is available, but production defaults should remain Python until local benchmarks prove a win.
+- Build the optional Rust extension for local validation with `cargo build --release --manifest-path rust/Cargo.toml`; source checkouts can load the release artifact directly.
 
 Multi-group method selection:
 
@@ -422,5 +483,6 @@ Multi-group method selection:
 
 Capability and validation:
 
+- No-spec analyses keep pairwise and post-hoc comparisons enabled but disable capability metrics.
 - Capability metrics are computed per group only when specs are valid and policy allows it.
 - Monte Carlo validation is opt-in and disabled by default.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .protocols import GroupStatsBackend
 from .python_backend import PythonBackend
-from .rust_backend_stub import RustBackendStub
+from .rust_backend import RustBackend, RustExtensionUnavailable
 
 
 class BackendUnavailableError(RuntimeError):
@@ -12,7 +12,7 @@ class BackendUnavailableError(RuntimeError):
 
 
 _PYTHON_BACKEND = PythonBackend()
-_RUST_BACKEND = RustBackendStub()
+_RUST_BACKEND: GroupStatsBackend | None = None
 
 
 def _normalize_backend_name(backend: str | None) -> str:
@@ -29,12 +29,23 @@ def resolve_backend(backend: str | None = None, *, enable_rust_in_auto: bool = F
     if normalized == "python":
         return _PYTHON_BACKEND
     if normalized == "rust":
-        raise BackendUnavailableError(
-            "backend='rust' was requested, but the Rust backend is currently only a stub."
-        )
+        return _resolve_rust_backend()
     if enable_rust_in_auto:
-        return _PYTHON_BACKEND
+        try:
+            return _resolve_rust_backend()
+        except BackendUnavailableError:
+            return _PYTHON_BACKEND
     return _PYTHON_BACKEND
+
+
+def _resolve_rust_backend() -> GroupStatsBackend:
+    global _RUST_BACKEND
+    if _RUST_BACKEND is None:
+        try:
+            _RUST_BACKEND = RustBackend()
+        except RustExtensionUnavailable as exc:
+            raise BackendUnavailableError(str(exc)) from exc
+    return _RUST_BACKEND
 
 
 __all__ = ["BackendUnavailableError", "resolve_backend"]
