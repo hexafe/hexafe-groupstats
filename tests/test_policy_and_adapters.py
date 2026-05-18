@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -9,6 +10,7 @@ from hexafe_groupstats import (
     AnalysisConfig,
     SpecLimits,
     analyze_dataframe,
+    analyze_grouped_metrics,
     analyze_metric,
     classify_spec_status,
     resolve_analysis_policy,
@@ -114,6 +116,63 @@ def test_pandas_adapter_handles_categorical_grouping_without_future_warning():
         results = analyze_dataframe(frame)
 
     assert [result.metric for result in results] == ["m1", "m2"]
+
+
+def test_pandas_adapter_preserves_numpy_group_arrays(monkeypatch):
+    from hexafe_groupstats.adapters import pandas as pandas_adapter
+
+    captured_groups = []
+    captured_specs = []
+    real_analyze_groups = pandas_adapter.analyze_groups
+
+    def capture_analyze_groups(**kwargs):
+        captured_groups.extend(kwargs["groups"].values())
+        captured_specs.append(kwargs["spec_limits"])
+        return real_analyze_groups(**kwargs)
+
+    monkeypatch.setattr(pandas_adapter, "analyze_groups", capture_analyze_groups)
+    frame = pd.DataFrame(
+        {
+            "metric": ["m1", "m1", "m1", "m1"],
+            "group": ["A", "A", "B", "B"],
+            "value": ["1.0", "1.1", "2.0", "2.1"],
+            "LSL": [0.0] * 4,
+            "NOMINAL": [1.5] * 4,
+            "USL": [3.0] * 4,
+        }
+    )
+
+    analyze_dataframe(
+        frame,
+        metric_column="metric",
+        group_column="group",
+        value_column="value",
+        lsl_column="LSL",
+        nominal_column="NOMINAL",
+        usl_column="USL",
+    )
+
+    assert frame["value"].dtype == object
+    assert captured_groups
+    assert all(isinstance(values, np.ndarray) for values in captured_groups)
+    assert all(values.dtype == np.float64 for values in captured_groups)
+    assert len(captured_specs[0]) == 1
+
+
+def test_analyze_grouped_metrics_uses_metric_specific_specs():
+    results = analyze_grouped_metrics(
+        {
+            "m1": {"A": [1.0, 1.1], "B": [2.0, 2.1]},
+            "m2": {"A": [5.0, 5.1], "B": [6.0, 6.1]},
+        },
+        spec_limits={
+            "m1": SpecLimits(lsl=0.0, nominal=1.5, usl=3.0),
+            "m2": SpecLimits(lsl=4.0, nominal=5.5, usl=7.0),
+        },
+    )
+
+    assert [result.metric for result in results] == ["m1", "m2"]
+    assert all(result.spec_status.value == "EXACT_MATCH" for result in results)
 
 
 def test_pandas_adapter_detects_spec_mismatch():

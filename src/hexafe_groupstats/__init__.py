@@ -2,7 +2,14 @@
 
 __version__ = "0.1.0rc3"
 
-from .api import analyze_dataframe, analyze_metric, classify_spec_status, compare_groups, resolve_analysis_policy
+from .api import (
+    analyze_dataframe,
+    analyze_grouped_metrics,
+    analyze_metric,
+    classify_spec_status,
+    compare_groups,
+    resolve_analysis_policy,
+)
 from .config import AnalysisConfig
 from .core.corrections import describe_correction_policy, format_correction_method
 from .core.pairwise import describe_pairwise_strategy
@@ -28,6 +35,7 @@ __all__ = [
     "SpecLimits",
     "__version__",
     "analyze_dataframe",
+    "analyze_grouped_metrics",
     "analyze_metric",
     "classify_spec_status",
     "compare_groups",

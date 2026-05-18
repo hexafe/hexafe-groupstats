@@ -37,6 +37,26 @@ def analyze_metric(
     return analyze_groups(metric_name=metric_name, groups=groups, spec_limits=spec_limits, config=config)
 
 
+def analyze_grouped_metrics(
+    metrics: Mapping[str, Mapping[str, Sequence[Any]]],
+    *,
+    spec_limits: Mapping[str, Any] | None = None,
+    config: AnalysisConfig | None = None,
+) -> list[MetricAnalysisResult]:
+    """Analyze multiple already-grouped metrics without forcing dataframe reshaping."""
+
+    spec_by_metric = spec_limits or {}
+    return [
+        analyze_groups(
+            metric_name=str(metric_name),
+            groups=groups,
+            spec_limits=spec_by_metric.get(str(metric_name)),
+            config=config,
+        )
+        for metric_name, groups in metrics.items()
+    ]
+
+
 def analyze_dataframe(
     dataframe: Any,
     *,
@@ -70,9 +90,9 @@ __all__ = [
     "MetricAnalysisResult",
     "SpecLimits",
     "analyze_dataframe",
+    "analyze_grouped_metrics",
     "analyze_metric",
     "classify_spec_status",
     "compare_groups",
     "resolve_analysis_policy",
 ]
-

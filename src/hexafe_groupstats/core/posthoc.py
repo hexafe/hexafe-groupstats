@@ -20,7 +20,7 @@ from ..domain.result_models import (
 from ..native.protocols import GroupStatsBackend
 from .confidence_intervals import bootstrap_pairwise_effect_cis
 from .corrections import adjust_pvalues, format_correction_method
-from .effect_sizes import cliffs_delta, cohen_d
+from .effect_sizes import cliffs_delta, cohen_d_from_stats
 from .pairwise import compute_pairwise_results, describe_pairwise_strategy
 
 
@@ -101,16 +101,32 @@ def _games_howell_row(
     group_b: str,
     left: np.ndarray,
     right: np.ndarray,
+    mean_left: float | None = None,
+    mean_right: float | None = None,
+    var_left: float | None = None,
+    var_right: float | None = None,
+    std_left: float | None = None,
+    std_right: float | None = None,
     group_count: int,
     alpha: float,
     ci_level: float,
     effect_size_ci: tuple[float, float] | None,
 ) -> PostHocComparisonResult:
-    mean_left = float(np.mean(left))
-    mean_right = float(np.mean(right))
+    mean_left = float(np.mean(left)) if mean_left is None else float(mean_left)
+    mean_right = float(np.mean(right)) if mean_right is None else float(mean_right)
     diff = mean_left - mean_right
-    var_left = float(np.var(left, ddof=1))
-    var_right = float(np.var(right, ddof=1))
+    var_left = float(np.var(left, ddof=1)) if var_left is None else float(var_left)
+    var_right = float(np.var(right, ddof=1)) if var_right is None else float(var_right)
+    std_left = float(np.sqrt(var_left)) if std_left is None and var_left >= 0 else std_left
+    std_right = float(np.sqrt(var_right)) if std_right is None and var_right >= 0 else std_right
+    effect_size = cohen_d_from_stats(
+        mean_a=mean_left,
+        std_a=std_left,
+        n_a=left.size,
+        mean_b=mean_right,
+        std_b=std_right,
+        n_b=right.size,
+    )
     se_sq = (var_left / left.size) + (var_right / right.size)
     if not np.isfinite(se_sq) or se_sq <= 0.0:
         return PostHocComparisonResult(
@@ -123,7 +139,7 @@ def _games_howell_row(
             raw_p_value=None,
             adjusted_p_value=None,
             significant=False,
-            effect_size=cohen_d(left, right),
+            effect_size=effect_size,
             effect_type="cohen_d",
             comparison_estimate=diff,
             comparison_estimate_label="mean_difference",
@@ -146,7 +162,7 @@ def _games_howell_row(
             raw_p_value=None,
             adjusted_p_value=None,
             significant=False,
-            effect_size=cohen_d(left, right),
+            effect_size=effect_size,
             effect_type="cohen_d",
             comparison_estimate=diff,
             comparison_estimate_label="mean_difference",
@@ -169,7 +185,7 @@ def _games_howell_row(
         raw_p_value=adjusted_p,
         adjusted_p_value=adjusted_p,
         significant=bool(adjusted_p < alpha),
-        effect_size=cohen_d(left, right),
+        effect_size=effect_size,
         effect_type="cohen_d",
         comparison_estimate=diff,
         comparison_estimate_label="mean_difference",
@@ -197,6 +213,9 @@ def _run_games_howell_fallback(
         config=config,
     )
     rows = []
+    means = [float(np.mean(group)) if group.size else None for group in groups]
+    vars_ = [float(np.var(group, ddof=1)) if group.size > 1 else None for group in groups]
+    stds = [None if value is None else float(np.sqrt(value)) for value in vars_]
     for left_index, right_index in pair_indices:
         group_a = labels[left_index]
         group_b = labels[right_index]
@@ -207,6 +226,12 @@ def _run_games_howell_fallback(
                 group_b=group_b,
                 left=groups[left_index],
                 right=groups[right_index],
+                mean_left=means[left_index],
+                mean_right=means[right_index],
+                var_left=vars_[left_index],
+                var_right=vars_[right_index],
+                std_left=stds[left_index],
+                std_right=stds[right_index],
                 group_count=len(groups),
                 alpha=config.alpha,
                 ci_level=config.ci_level,
@@ -267,6 +292,8 @@ def _run_tukey_family(
     )
     pair_indices = list(combinations(range(len(labels)), 2))
     pairs = [(labels[left], labels[right]) for left, right in pair_indices]
+    means = [float(np.mean(group)) if group.size else None for group in groups]
+    stds = [float(np.std(group, ddof=1)) if group.size > 1 else None for group in groups]
     effect_cis = _pairwise_effect_ci_lookup(
         backend=backend,
         family=family,
@@ -293,7 +320,14 @@ def _run_tukey_family(
                 raw_p_value=adjusted_p,
                 adjusted_p_value=adjusted_p,
                 significant=bool(adjusted_p < config.alpha),
-                effect_size=cohen_d(groups[left], groups[right]),
+                effect_size=cohen_d_from_stats(
+                    mean_a=means[left],
+                    std_a=stds[left],
+                    n_a=groups[left].size,
+                    mean_b=means[right],
+                    std_b=stds[right],
+                    n_b=groups[right].size,
+                ),
                 effect_type="cohen_d",
                 comparison_estimate=statistic,
                 comparison_estimate_label="mean_difference",

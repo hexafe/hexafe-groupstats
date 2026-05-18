@@ -47,10 +47,9 @@ def compute_group_capability(
     alpha: float = 0.05,
 ) -> CapabilityResult:
     warnings: list[str] = []
-    values = group.values
-    n = int(values.size)
-    mean = float(np.mean(values)) if n > 0 else None
-    sigma = float(np.std(values, ddof=1)) if n > 1 else (0.0 if n == 1 else None)
+    n = int(group.sample_size)
+    mean = group.mean if n > 0 else None
+    sigma = group.std if n > 1 else (0.0 if n == 1 else None)
 
     if n < 2:
         warnings.append("insufficient_n")

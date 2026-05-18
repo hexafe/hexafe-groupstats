@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from ..config import AnalysisConfig
 from ..core.engine import analyze_groups
 from ..domain.models import SpecLimits
@@ -33,7 +35,7 @@ def analyze_dataframe(
     config: AnalysisConfig | None = None,
 ) -> list[MetricAnalysisResult]:
     pd = _require_pandas()
-    frame = dataframe.copy() if hasattr(dataframe, "copy") else pd.DataFrame(dataframe)
+    frame = dataframe if hasattr(dataframe, "columns") else pd.DataFrame(dataframe)
     required_columns = {metric_column, group_column, value_column}
     missing_required = sorted(column for column in required_columns if column not in frame.columns)
     if missing_required:
@@ -52,15 +54,21 @@ def analyze_dataframe(
             f"missing: {', '.join(missing_specs)}"
         )
 
-    frame[value_column] = pd.to_numeric(frame[value_column], errors="coerce")
-    frame = frame.dropna(subset=[value_column])
-    if frame.empty:
+    numeric_values = pd.to_numeric(frame[value_column], errors="coerce")
+    valid_value_mask = numeric_values.notna()
+    if not bool(valid_value_mask.any()):
         return []
+
+    work_columns = list(dict.fromkeys([metric_column, group_column, *present_spec_columns]))
+    frame = frame.loc[valid_value_mask, work_columns].copy()
+    frame[value_column] = numeric_values.loc[valid_value_mask].to_numpy(dtype=np.float64, copy=False)
+    for column in present_spec_columns:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
 
     results: list[MetricAnalysisResult] = []
     for metric_name, metric_frame in frame.groupby(metric_column, sort=True, observed=True):
         groups = {
-            str(group_name): group_frame[value_column].tolist()
+            str(group_name): group_frame[value_column].to_numpy(dtype=np.float64, copy=False)
             for group_name, group_frame in metric_frame.groupby(group_column, sort=True, observed=True)
         }
         spec_records = None
@@ -68,15 +76,12 @@ def analyze_dataframe(
             column in metric_frame.columns for column in configured_spec_columns
         )
         if spec_columns_present:
-            spec_records = []
-            for _, row in metric_frame.iterrows():
-                spec_records.append(
-                    SpecLimits(
-                        lsl=None if lsl_column is None else _coerce_numeric(row.get(lsl_column)),
-                        nominal=None if nominal_column is None else _coerce_numeric(row.get(nominal_column)),
-                        usl=None if usl_column is None else _coerce_numeric(row.get(usl_column)),
-                    )
-                )
+            spec_records = _unique_metric_specs(
+                metric_frame,
+                lsl_column=lsl_column,
+                nominal_column=nominal_column,
+                usl_column=usl_column,
+            )
         results.append(
             analyze_groups(
                 metric_name=str(metric_name),
@@ -86,6 +91,28 @@ def analyze_dataframe(
             )
         )
     return results
+
+
+def _unique_metric_specs(
+    metric_frame: Any,
+    *,
+    lsl_column: str | None,
+    nominal_column: str | None,
+    usl_column: str | None,
+) -> list[SpecLimits]:
+    spec_columns = list(dict.fromkeys(column for column in (lsl_column, nominal_column, usl_column) if column is not None))
+    unique_specs = metric_frame[spec_columns].drop_duplicates()
+    spec_records: list[SpecLimits] = []
+    for values in unique_specs.itertuples(index=False, name=None):
+        row = dict(zip(spec_columns, values))
+        spec_records.append(
+            SpecLimits(
+                lsl=None if lsl_column is None else _coerce_numeric(row.get(lsl_column)),
+                nominal=None if nominal_column is None else _coerce_numeric(row.get(nominal_column)),
+                usl=None if usl_column is None else _coerce_numeric(row.get(usl_column)),
+            )
+        )
+    return spec_records
 
 
 def results_to_descriptive_dataframe(results: list[MetricAnalysisResult]):

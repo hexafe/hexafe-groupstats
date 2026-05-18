@@ -250,21 +250,31 @@ class PythonBackend(GroupStatsBackend):
         correction_method: str,
         non_parametric: bool,
         equal_var: bool,
+        means: list[float | None] | None = None,
+        stds: list[float | None] | None = None,
     ) -> list[PairwiseBackendRow]:
         raw_rows: list[PairwiseBackendRow] = []
         raw_p_values: list[float | None] = []
-        means = [float(np.mean(group)) if group.size else np.nan for group in groups]
-        stds = [float(np.std(group, ddof=1)) if group.size > 1 else np.nan for group in groups]
+        resolved_means = (
+            [float(value) if value is not None else np.nan for value in means]
+            if means is not None
+            else [float(np.mean(group)) if group.size else np.nan for group in groups]
+        )
+        resolved_stds = (
+            [float(value) if value is not None else np.nan for value in stds]
+            if stds is not None
+            else [float(np.std(group, ddof=1)) if group.size > 1 else np.nan for group in groups]
+        )
         for left_index, right_index in combinations(range(len(labels)), 2):
             sample_a = groups[left_index]
             sample_b = groups[right_index]
             test_name, p_value, effect_size = _pairwise_stats(
                 sample_a,
                 sample_b,
-                mean_a=means[left_index],
-                std_a=stds[left_index],
-                mean_b=means[right_index],
-                std_b=stds[right_index],
+                mean_a=resolved_means[left_index],
+                std_a=resolved_stds[left_index],
+                mean_b=resolved_means[right_index],
+                std_b=resolved_stds[right_index],
                 non_parametric=non_parametric,
                 equal_var=equal_var,
             )

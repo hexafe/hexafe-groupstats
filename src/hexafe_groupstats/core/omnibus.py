@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy.stats import f, f_oneway, kruskal, mannwhitneyu, ttest_ind
+from scipy.stats import f, f_oneway, kruskal, mannwhitneyu, ttest_ind_from_stats
 
 from ..config import AnalysisConfig
 from ..domain.enums import SelectionMode
@@ -19,6 +19,42 @@ def welch_anova_p_value(groups: list[np.ndarray]) -> float | None:
     means = np.array([np.mean(group) for group in groups], dtype=float)
 
     if np.any(sizes < 2) or np.any(variances <= 0):
+        return None
+    weights = sizes / variances
+    weight_sum = float(np.sum(weights))
+    if weight_sum <= 0:
+        return None
+
+    weighted_mean = float(np.sum(weights * means) / weight_sum)
+    k = float(len(groups))
+    numerator = np.sum(weights * (means - weighted_mean) ** 2) / (k - 1.0)
+    correction = 1.0 + (2.0 * (k - 2.0) / (k**2 - 1.0)) * np.sum(
+        ((1.0 - (weights / weight_sum)) ** 2) / (sizes - 1.0)
+    )
+    if np.isclose(correction, 0.0):
+        return None
+
+    f_stat = numerator / correction
+    df1 = k - 1.0
+    df2_denom = 3.0 * np.sum(((1.0 - (weights / weight_sum)) ** 2) / (sizes - 1.0))
+    if np.isclose(df2_denom, 0.0):
+        return None
+    df2 = (k**2 - 1.0) / df2_denom
+    if df1 <= 0 or df2 <= 0:
+        return None
+    p_value = 1.0 - f.cdf(f_stat, df1, df2)
+    return None if np.isnan(p_value) else float(p_value)
+
+
+def welch_anova_p_value_from_groups(groups: list[GroupPreprocessResult]) -> float | None:
+    sizes = np.array([group.sample_size for group in groups], dtype=float)
+    variances = np.array(
+        [np.nan if group.variance is None else group.variance for group in groups],
+        dtype=float,
+    )
+    means = np.array([np.nan if group.mean is None else group.mean for group in groups], dtype=float)
+
+    if np.any(sizes < 2) or np.any(variances <= 0) or np.any(~np.isfinite(means)):
         return None
     weights = sizes / variances
     weight_sum = float(np.sum(weights))
@@ -71,10 +107,26 @@ def run_omnibus_test(
     try:
         if len(usable) == 2:
             if assumptions.selection_mode == SelectionMode.PARAMETRIC_EQUAL_VARIANCE:
-                _, p_value = ttest_ind(arrays[0], arrays[1], equal_var=True, nan_policy="omit")
+                _, p_value = ttest_ind_from_stats(
+                    mean1=usable[0].mean,
+                    std1=usable[0].std,
+                    nobs1=usable[0].sample_size,
+                    mean2=usable[1].mean,
+                    std2=usable[1].std,
+                    nobs2=usable[1].sample_size,
+                    equal_var=True,
+                )
                 test_name = "Student t-test"
             elif assumptions.selection_mode == SelectionMode.PARAMETRIC_UNEQUAL_VARIANCE:
-                _, p_value = ttest_ind(arrays[0], arrays[1], equal_var=False, nan_policy="omit")
+                _, p_value = ttest_ind_from_stats(
+                    mean1=usable[0].mean,
+                    std1=usable[0].std,
+                    nobs1=usable[0].sample_size,
+                    mean2=usable[1].mean,
+                    std2=usable[1].std,
+                    nobs2=usable[1].sample_size,
+                    equal_var=False,
+                )
                 test_name = "Welch t-test"
             else:
                 _, p_value = mannwhitneyu(arrays[0], arrays[1], alternative="two-sided")
@@ -84,7 +136,7 @@ def run_omnibus_test(
                 _, p_value = f_oneway(*arrays)
                 test_name = "ANOVA"
             elif assumptions.selection_mode == SelectionMode.PARAMETRIC_UNEQUAL_VARIANCE:
-                p_value = welch_anova_p_value(arrays)
+                p_value = welch_anova_p_value_from_groups(usable)
                 test_name = "Welch ANOVA"
             else:
                 _, p_value = kruskal(*arrays)
@@ -123,5 +175,4 @@ def run_omnibus_test(
     )
 
 
-__all__ = ["run_omnibus_test", "welch_anova_p_value"]
-
+__all__ = ["run_omnibus_test", "welch_anova_p_value", "welch_anova_p_value_from_groups"]

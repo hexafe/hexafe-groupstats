@@ -11,21 +11,25 @@ def compute_descriptive_stats(preprocessed: tuple[GroupPreprocessResult, ...]) -
     rows: list[DescriptiveStats] = []
     for group in preprocessed:
         values = group.values
-        if values.size == 0:
+        if group.sample_size == 0:
             continue
-        q1, median, q3 = np.percentile(values, [25, 50, 75])
+        q1, median, q3 = (
+            (group.q1, group.median, group.q3)
+            if group.q1 is not None and group.median is not None and group.q3 is not None
+            else tuple(float(value) for value in np.percentile(values, [25, 50, 75]))
+        )
         rows.append(
             DescriptiveStats(
                 group=group.label,
                 n=group.sample_size,
-                mean=float(np.mean(values)),
-                std=float(np.std(values, ddof=1)) if values.size > 1 else None,
+                mean=group.mean if group.mean is not None else float(np.mean(values)),
+                std=group.std if group.sample_size > 1 else None,
                 median=float(median),
                 q1=float(q1),
                 q3=float(q3),
-                iqr=float(q3 - q1),
-                minimum=float(np.min(values)),
-                maximum=float(np.max(values)),
+                iqr=group.iqr if group.iqr is not None else float(q3 - q1),
+                minimum=group.minimum if group.minimum is not None else float(np.min(values)),
+                maximum=group.maximum if group.maximum is not None else float(np.max(values)),
                 warnings=group.warnings,
             )
         )
@@ -33,4 +37,3 @@ def compute_descriptive_stats(preprocessed: tuple[GroupPreprocessResult, ...]) -
 
 
 __all__ = ["compute_descriptive_stats"]
-

@@ -33,11 +33,17 @@ def compute_pairwise_results(
     labels = [group.label for group in preprocessed]
     groups = [group.values for group in preprocessed]
     group_by_label = {group.label: group for group in preprocessed}
-    means_by_label = {
-        group.label: float(np.mean(group.values))
+    means = [
+        group.mean if group.mean is not None else (float(np.mean(group.values)) if group.sample_size > 0 else None)
         for group in preprocessed
-        if group.values.size > 0
-    }
+    ]
+    stds = [
+        group.std
+        if group.std is not None
+        else (float(np.std(group.values, ddof=1)) if group.sample_size > 1 else None)
+        for group in preprocessed
+    ]
+    means_by_label = {group.label: means[index] for index, group in enumerate(preprocessed) if group.sample_size > 0}
 
     is_non_parametric = assumptions.selection_mode == SelectionMode.NON_PARAMETRIC
     equal_var = assumptions.variance_outcome == "passed"
@@ -48,6 +54,8 @@ def compute_pairwise_results(
         correction_method=config.correction_method,
         non_parametric=is_non_parametric,
         equal_var=equal_var,
+        means=means,
+        stds=stds,
     )
 
     effect_type = pairwise_effect_type(non_parametric=is_non_parametric)
@@ -83,8 +91,8 @@ def compute_pairwise_results(
             comparison_estimate=(
                 means_by_label[row.group_a] - means_by_label[row.group_b]
                 if not is_non_parametric
-                and group_by_label[row.group_a].values.size > 0
-                and group_by_label[row.group_b].values.size > 0
+                and group_by_label[row.group_a].sample_size > 0
+                and group_by_label[row.group_b].sample_size > 0
                 else None
             ),
             comparison_estimate_label="mean_difference" if not is_non_parametric else None,

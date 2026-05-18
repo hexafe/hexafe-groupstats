@@ -20,6 +20,15 @@ class GroupPreprocessResult:
     is_constant: bool
     is_small_n: bool
     warnings: tuple[str, ...] = ()
+    mean: float | None = None
+    variance: float | None = None
+    std: float | None = None
+    median: float | None = None
+    q1: float | None = None
+    q3: float | None = None
+    iqr: float | None = None
+    minimum: float | None = None
+    maximum: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

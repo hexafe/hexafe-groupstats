@@ -22,6 +22,29 @@ def cohen_d(sample_a: NDArray[np.float64], sample_b: NDArray[np.float64]) -> flo
     return float((np.mean(sample_a) - np.mean(sample_b)) / np.sqrt(pooled))
 
 
+def cohen_d_from_stats(
+    *,
+    mean_a: float | None,
+    std_a: float | None,
+    n_a: int,
+    mean_b: float | None,
+    std_b: float | None,
+    n_b: int,
+) -> float | None:
+    if mean_a is None or mean_b is None or std_a is None or std_b is None:
+        return None
+    if n_a < 2 or n_b < 2:
+        return None
+    pooled_num = ((n_a - 1) * (std_a**2)) + ((n_b - 1) * (std_b**2))
+    pooled_den = n_a + n_b - 2
+    if pooled_den <= 0:
+        return None
+    pooled = pooled_num / pooled_den
+    if pooled <= 0:
+        return None
+    return float((mean_a - mean_b) / np.sqrt(pooled))
+
+
 def cliffs_delta(sample_a: NDArray[np.float64], sample_b: NDArray[np.float64]) -> float | None:
     if sample_a.size == 0 or sample_b.size == 0:
         return None
@@ -73,8 +96,8 @@ def omnibus_effect_type(multi_group_effect: str) -> str:
 __all__ = [
     "cliffs_delta",
     "cohen_d",
+    "cohen_d_from_stats",
     "eta_or_omega_squared",
     "omnibus_effect_type",
     "pairwise_effect_type",
 ]
-

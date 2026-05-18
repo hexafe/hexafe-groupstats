@@ -68,6 +68,46 @@ def _profile_sizes(profile: str) -> dict[str, int]:
     }
 
 
+def _large_dataframe(
+    *,
+    rows: int,
+    metric_count: int,
+    group_count: int,
+    categorical: bool,
+    seed: int,
+):
+    try:
+        import pandas as pd  # type: ignore
+    except ImportError:
+        return None
+
+    resolved_rows = max(1, int(rows))
+    resolved_metrics = max(1, int(metric_count))
+    resolved_groups = max(1, int(group_count))
+    rng = np.random.default_rng(seed)
+    row_index = np.arange(resolved_rows)
+    metric_codes = row_index % resolved_metrics
+    group_codes = (row_index // resolved_metrics) % resolved_groups
+    metric_labels = np.array([f"m{index:02d}" for index in range(resolved_metrics)], dtype=object)[metric_codes]
+    group_labels = np.array([f"G{index + 1:02d}" for index in range(resolved_groups)], dtype=object)[group_codes]
+    values = rng.normal(
+        loc=(metric_codes * 0.01) + (group_codes * 0.15),
+        scale=1.0 + ((group_codes % 3) * 0.05),
+        size=resolved_rows,
+    )
+    frame = pd.DataFrame({"metric": metric_labels, "group": group_labels, "value": values})
+    if categorical:
+        frame["metric"] = pd.Categorical(
+            frame["metric"],
+            categories=[f"m{index:02d}" for index in range(resolved_metrics)],
+        )
+        frame["group"] = pd.Categorical(
+            frame["group"],
+            categories=[f"G{index + 1:02d}" for index in range(resolved_groups)],
+        )
+    return frame
+
+
 def _config(backend: str) -> AnalysisConfig:
     return AnalysisConfig(backend=backend)
 
@@ -78,6 +118,13 @@ def _build_benchmarks(
     profile: str,
     bootstrap_iterations: int,
     simulation_iterations: int,
+    include_large_dataframe: bool,
+    large_dataframe_rows: int,
+    large_dataframe_metrics: int,
+    large_dataframe_groups: int,
+    large_dataframe_categorical: bool,
+    large_dataframe_posthoc_method: str,
+    large_dataframe_distribution_diagnostics: bool,
 ) -> list[Benchmark]:
     sizes = _profile_sizes(profile)
     small_groups = _normal_groups(group_count=2, sample_size=30, seed=10)
@@ -172,6 +219,28 @@ def _build_benchmarks(
                 )
     frame = pd.DataFrame(rows)
     benchmarks.append(("dataframe_metric_batch", lambda: analyze_dataframe(frame, config=_config(backend))))
+    if include_large_dataframe:
+        large_frame = _large_dataframe(
+            rows=large_dataframe_rows,
+            metric_count=large_dataframe_metrics,
+            group_count=large_dataframe_groups,
+            categorical=large_dataframe_categorical,
+            seed=1000,
+        )
+        if large_frame is not None:
+            benchmarks.append(
+                (
+                    f"large_dataframe_{large_dataframe_rows}_rows_{large_dataframe_metrics}_metrics",
+                    lambda: analyze_dataframe(
+                        large_frame,
+                        config=AnalysisConfig(
+                            backend=backend,
+                            posthoc_method=large_dataframe_posthoc_method,
+                            distribution_diagnostics=large_dataframe_distribution_diagnostics,
+                        ),
+                    ),
+                )
+            )
     return benchmarks
 
 
@@ -214,6 +283,45 @@ def main() -> int:
         default=8,
         help="Monte Carlo iterations for the validation scenario.",
     )
+    parser.add_argument(
+        "--include-large-dataframe",
+        action="store_true",
+        help="Add an opt-in large DataFrame stress scenario; intentionally off for normal CI-sized runs.",
+    )
+    parser.add_argument(
+        "--large-dataframe-rows",
+        type=int,
+        default=1_000_000,
+        help="Rows for --include-large-dataframe.",
+    )
+    parser.add_argument(
+        "--large-dataframe-metrics",
+        type=int,
+        default=20,
+        help="Metric count for --include-large-dataframe.",
+    )
+    parser.add_argument(
+        "--large-dataframe-groups",
+        type=int,
+        default=4,
+        help="Group count for --include-large-dataframe.",
+    )
+    parser.add_argument(
+        "--large-dataframe-categorical",
+        action="store_true",
+        help="Use pandas categoricals for metric/group labels in the large DataFrame scenario.",
+    )
+    parser.add_argument(
+        "--large-dataframe-posthoc-method",
+        choices=("auto", "legacy", "tukey", "games_howell", "dunn"),
+        default="legacy",
+        help="Post-hoc mode for the large DataFrame scenario; legacy keeps the opt-in stress run lighter.",
+    )
+    parser.add_argument(
+        "--large-dataframe-distribution-diagnostics",
+        action="store_true",
+        help="Enable distribution diagnostics in the large DataFrame scenario.",
+    )
     args = parser.parse_args()
 
     if args.repeat < 1 or args.warmup < 0:
@@ -225,6 +333,13 @@ def main() -> int:
         profile=args.profile,
         bootstrap_iterations=args.bootstrap_iterations,
         simulation_iterations=args.simulation_iterations,
+        include_large_dataframe=args.include_large_dataframe,
+        large_dataframe_rows=args.large_dataframe_rows,
+        large_dataframe_metrics=args.large_dataframe_metrics,
+        large_dataframe_groups=args.large_dataframe_groups,
+        large_dataframe_categorical=args.large_dataframe_categorical,
+        large_dataframe_posthoc_method=args.large_dataframe_posthoc_method,
+        large_dataframe_distribution_diagnostics=args.large_dataframe_distribution_diagnostics,
     ):
         durations = _time_call(callback, repeat=args.repeat, warmup=args.warmup)
         values_ms = [duration * 1000.0 for duration in durations]

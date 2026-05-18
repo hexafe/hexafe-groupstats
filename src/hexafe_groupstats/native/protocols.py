@@ -38,6 +38,8 @@ class GroupStatsBackend(Protocol):
         correction_method: str,
         non_parametric: bool,
         equal_var: bool,
+        means: list[float | None] | None = None,
+        stds: list[float | None] | None = None,
     ) -> list[PairwiseBackendRow]:
         """Compute aligned pairwise comparisons for all group pairs."""
 
@@ -63,4 +65,3 @@ class GroupStatsBackend(Protocol):
         seed: int,
     ) -> list[tuple[float, float] | None]:
         """Bootstrap percentile confidence intervals for many pairwise effects."""
-

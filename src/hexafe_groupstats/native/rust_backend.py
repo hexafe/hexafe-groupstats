@@ -78,6 +78,8 @@ class RustBackend(GroupStatsBackend):
         correction_method: str,
         non_parametric: bool,
         equal_var: bool,
+        means: list[float | None] | None = None,
+        stds: list[float | None] | None = None,
     ) -> list[PairwiseBackendRow]:
         if non_parametric:
             return self._python.compute_pairwise_batch(
@@ -87,6 +89,8 @@ class RustBackend(GroupStatsBackend):
                 correction_method=correction_method,
                 non_parametric=non_parametric,
                 equal_var=equal_var,
+                means=means,
+                stds=stds,
             )
 
         rows = self._native.compute_pairwise_batch(

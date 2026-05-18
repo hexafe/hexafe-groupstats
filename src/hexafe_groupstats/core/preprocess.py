@@ -23,7 +23,18 @@ def preprocess_group(
 
     sample_size = int(numeric_values.size)
     is_empty = sample_size == 0
-    is_constant = bool(sample_size > 1 and np.isclose(np.std(numeric_values, ddof=1), 0.0))
+    mean = float(np.mean(numeric_values)) if sample_size else None
+    variance = float(np.var(numeric_values, ddof=1)) if sample_size > 1 else None
+    std = float(np.sqrt(variance)) if variance is not None else (0.0 if sample_size == 1 else None)
+    if sample_size:
+        q1, median, q3 = np.percentile(numeric_values, [25, 50, 75])
+        minimum = float(np.min(numeric_values))
+        maximum = float(np.max(numeric_values))
+        iqr = float(q3 - q1)
+    else:
+        q1 = median = q3 = minimum = maximum = iqr = None
+
+    is_constant = bool(sample_size > 1 and std is not None and np.isclose(std, 0.0))
     is_small_n = sample_size < int(small_n_threshold)
 
     warnings: list[str] = []
@@ -41,6 +52,15 @@ def preprocess_group(
         is_empty=is_empty,
         is_constant=is_constant,
         is_small_n=is_small_n,
+        mean=mean,
+        variance=variance,
+        std=std,
+        median=None if median is None else float(median),
+        q1=None if q1 is None else float(q1),
+        q3=None if q3 is None else float(q3),
+        iqr=iqr,
+        minimum=minimum,
+        maximum=maximum,
         warnings=tuple(warnings),
     )
 
@@ -63,4 +83,3 @@ def preprocess_groups(
 
 
 __all__ = ["preprocess_group", "preprocess_groups"]
-
