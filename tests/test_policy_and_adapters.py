@@ -152,7 +152,7 @@ def test_pandas_adapter_preserves_numpy_group_arrays(monkeypatch):
         usl_column="USL",
     )
 
-    assert frame["value"].dtype == object
+    assert frame["value"].tolist() == ["1.0", "1.1", "2.0", "2.1"]
     assert captured_groups
     assert all(isinstance(values, np.ndarray) for values in captured_groups)
     assert all(values.dtype == np.float64 for values in captured_groups)
